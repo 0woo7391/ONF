@@ -137,14 +137,23 @@ MediaPipe FaceMesh로 얼굴 랜드마크를 실시간 추출하고,
 
 ## 🗂 프로젝트 구조
 project/
+
 ├─ main.py # 프로그램 진입점
+
 ├─ judge.py # 집중 판정 로직
+
 ├─ logger.py # 로그 기록
+
 ├─ config.py # 상태/모드/임계값
+
 ├─ logs/ # 세션 로그
+
 ├─ results/ # 결과 이미지
+
 ├─ requirements.txt
+
 ├─ README.md
+
 └─ LICENSE
 
 ---
