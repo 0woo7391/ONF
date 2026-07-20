@@ -8,6 +8,7 @@ Item {
     property int currentHour: 12
     property int currentMinute: 0
     property string visibleRange: rangeText()
+    property bool initialized: false
     implicitHeight: 230
 
     function hourLabel(offset) {
@@ -41,6 +42,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             antialiasing: true
+            transform: Translate { id: hourShift; y: 0 }
             onPaint: {
                 var ctx = getContext("2d")
                 ctx.reset()
@@ -65,12 +67,13 @@ Item {
                 ctx.textBaseline = "middle"
                 for (var row = 0; row < rows; row++) {
                     var y = top + row * rowHeight
-                    ctx.fillStyle = Theme.muted
+                    ctx.font = row === 3 ? "bold 13px Segoe UI" : "9px Segoe UI"
+                    ctx.fillStyle = row === 3 ? Theme.primary : Theme.muted
                     ctx.fillText(root.hourLabel(row - 3), 1, y + rowHeight / 2)
 
                     for (var column = 0; column < columns; column++) {
                         var x = labelWidth + column * cellWidth
-                        ctx.fillStyle = row === 3 ? "#F3F7FD" : "#FAFBFC"
+                        ctx.fillStyle = "#FAFBFC"
                         ctx.fillRect(x + 1, y + 1, cellWidth - 2, rowHeight - 2)
                         ctx.strokeStyle = Theme.border
                         ctx.lineWidth = 0.7
@@ -102,13 +105,6 @@ Item {
                 planned(0, 1, 2, "영어 독해")
                 planned(3, 3, 2, "수학 오답")
                 planned(5, 0, 3, "한국사")
-
-                var currentColumn = Math.min(5, Math.floor(root.currentMinute / 10))
-                var currentX = labelWidth + currentColumn * cellWidth + 1
-                var currentY = top + 3 * rowHeight + 1
-                ctx.strokeStyle = Theme.primary
-                ctx.lineWidth = 2
-                ctx.strokeRect(currentX, currentY, cellWidth - 2, rowHeight - 2)
             }
         }
 
@@ -136,15 +132,33 @@ Item {
                 }
                 Text { text: "계획"; color: Theme.muted; font.pixelSize: 9 }
             }
-            Row {
-                spacing: 4
-                Rectangle { width: 10; height: 10; radius: 2; color: "transparent"; border.color: Theme.primary; border.width: 2 }
-                Text { text: "현재"; color: Theme.muted; font.pixelSize: 9 }
-            }
         }
     }
 
-    onCurrentHourChanged: chart.requestPaint()
+    ParallelAnimation {
+        id: hourTransition
+        NumberAnimation {
+            target: hourShift
+            property: "y"
+            from: 18
+            to: 0
+            duration: 240
+            easing.type: Easing.OutCubic
+        }
+        SequentialAnimation {
+            NumberAnimation { target: chart; property: "opacity"; from: 0.58; to: 0.82; duration: 80 }
+            NumberAnimation { target: chart; property: "opacity"; from: 0.82; to: 1.0; duration: 160 }
+        }
+    }
+
+    onCurrentHourChanged: {
+        chart.requestPaint()
+        if (initialized)
+            hourTransition.restart()
+    }
     onCurrentMinuteChanged: chart.requestPaint()
-    Component.onCompleted: chart.requestPaint()
+    Component.onCompleted: {
+        initialized = true
+        chart.requestPaint()
+    }
 }
