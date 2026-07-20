@@ -66,10 +66,17 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
         self.engine.writing_calibration.status = CalibrationStatus.READY
         self.engine.set_work_mode("screen_writing")
 
-        decision = self.engine.decide(observation(0.0, 28.0, 0.78))
+        self.engine.decide(observation(0.0, 28.0, 0.78))
+        self.engine.decide(observation(0.5, 28.0, 0.78))
+        decision = self.engine.decide(observation(0.9, 28.0, 0.78))
 
         self.assertEqual(decision.effective_state, EffectiveState.FOCUS)
         self.assertEqual(self.engine.last_matched_profile, "writing")
+        self.assertEqual(decision.matched_profile, "writing")
+        self.assertLess(
+            decision.profile_distances["writing"],
+            decision.profile_distances["screen"],
+        )
 
         self.engine.set_work_mode("screen")
         self.engine.reset_runtime_state()
@@ -104,6 +111,49 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
         self.engine.set_work_mode("screen")
 
         self.assertIs(self.engine.filter._last, first)
+
+    def test_small_distance_changes_do_not_flap_between_profiles(self):
+        self.engine.writing_calibration.profile = profile(10.0, 0.60)
+        self.engine.writing_calibration.status = CalibrationStatus.READY
+        self.engine.set_work_mode("screen_writing")
+        self.engine.decide(observation(0.0, 0.0, 0.50))
+
+        first = self.engine.decide(observation(0.1, 5.2, 0.552))
+        second = self.engine.decide(observation(0.2, 4.8, 0.548))
+
+        self.assertEqual(first.matched_profile, "screen")
+        self.assertEqual(second.matched_profile, "screen")
+        self.assertIsNone(self.engine.profile_switch_candidate)
+
+    def test_profile_switch_requires_sustained_clear_improvement(self):
+        self.engine.writing_calibration.profile = profile(28.0, 0.78)
+        self.engine.writing_calibration.status = CalibrationStatus.READY
+        self.engine.set_work_mode("screen_writing")
+        self.engine.decide(observation(0.0, 0.0, 0.50))
+
+        candidate = self.engine.decide(observation(1.0, 28.0, 0.78))
+        switched = self.engine.decide(observation(1.5, 28.0, 0.78))
+
+        self.assertEqual(candidate.matched_profile, "screen")
+        self.assertEqual(candidate.profile_switch_candidate, "writing")
+        self.assertEqual(switched.matched_profile, "writing")
+        self.assertIsNone(switched.profile_switch_candidate)
+        self.assertIsNotNone(self.engine.filter._last)
+        self.assertIsNotNone(self.engine.writing_filter._last)
+
+    def test_invalid_observation_cancels_pending_profile_switch(self):
+        self.engine.writing_calibration.profile = profile(28.0, 0.78)
+        self.engine.writing_calibration.status = CalibrationStatus.READY
+        self.engine.set_work_mode("screen_writing")
+        self.engine.decide(observation(0.0, 0.0, 0.50))
+        self.engine.decide(observation(1.0, 28.0, 0.78))
+
+        self.engine.decide(
+            FrameObservation(timestamp=1.2, camera_ok=True, face_detected=False)
+        )
+
+        self.assertIsNone(self.engine.profile_switch_candidate)
+        self.assertIsNone(self.engine.profile_switch_started_at)
 
 
 if __name__ == "__main__":

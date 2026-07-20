@@ -191,6 +191,9 @@ class FocusDecision:
     duration: float = 0.0
     metrics: Optional[RelativeMetrics] = None
     reasons: Dict[str, bool] = field(default_factory=dict)
+    matched_profile: Optional[str] = None
+    profile_distances: Dict[str, float] = field(default_factory=dict)
+    profile_switch_candidate: Optional[str] = None
 
 
 @dataclass

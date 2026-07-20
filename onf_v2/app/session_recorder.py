@@ -47,6 +47,10 @@ class SessionRecorder:
                 "effective_state",
                 "reason",
                 "confidence",
+                "matched_profile",
+                "profile_switch_candidate",
+                "screen_distance",
+                "writing_distance",
                 "yaw_delta_deg",
                 "pitch_delta_deg",
                 "roll_delta_deg",
@@ -70,6 +74,10 @@ class SessionRecorder:
             decision.effective_state.value,
             decision.reason,
             round(decision.confidence, 3),
+            decision.matched_profile or "",
+            decision.profile_switch_candidate or "",
+            self._rounded_distance(decision, "screen"),
+            self._rounded_distance(decision, "writing"),
         ]
         if metrics is None:
             row.extend([""] * 8)
@@ -91,6 +99,11 @@ class SessionRecorder:
         if self._rows_since_flush >= 15 and self._raw_file is not None:
             self._raw_file.flush()
             self._rows_since_flush = 0
+
+    @staticmethod
+    def _rounded_distance(decision: FocusDecision, profile: str):
+        value = decision.profile_distances.get(profile)
+        return "" if value is None else round(value, 4)
 
     def finish(self, summary: SessionSummary, timeline_buckets=None) -> Optional[Path]:
         if self.session_dir is None:
