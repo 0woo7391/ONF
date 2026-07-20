@@ -1,0 +1,5 @@
+mediapipe==0.10.21
+numpy>=1.26,<2
+opencv-contrib-python>=4.11,<4.12
+Pillow>=10.0
+PySide6>=6.6
