@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import calendar
 from dataclasses import asdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -31,11 +32,15 @@ class AppBridge(QObject):
         self._records_date = date.today()
         self._planner_date = date.today()
         self._planner_tasks: List[Dict[str, Any]] = []
+        self._today_planner_tasks: List[Dict[str, Any]] = []
+        self._demo_tasks = _demo_planner_tasks()
         self._daily_summary: Dict[str, Any] = {}
         self._daily_hourly_data: List[Dict[str, Any]] = []
         self._weekly_records: List[Dict[str, Any]] = []
         self._monthly_levels: List[int] = []
         self._monthly_summary: Dict[str, Any] = {}
+        self._monthly_day_count = 31
+        self._monthly_leading_blanks = 0
         self._sound_effect = QSoundEffect(self)
         self._sound_paths = ensure_alert_sound_files(self.settings_store.path.parent / "sounds")
         self.refresh()
@@ -43,6 +48,10 @@ class AppBridge(QObject):
     @Property("QVariantList", notify=dataChanged)
     def plannerTasks(self) -> List[Dict[str, Any]]:
         return self._planner_tasks
+
+    @Property("QVariantList", notify=dataChanged)
+    def todayPlannerTasks(self) -> List[Dict[str, Any]]:
+        return self._today_planner_tasks
 
     @Property("QVariantMap", notify=dataChanged)
     def dailySummary(self) -> Dict[str, Any]:
@@ -63,6 +72,14 @@ class AppBridge(QObject):
     @Property("QVariantMap", notify=dataChanged)
     def monthlySummary(self) -> Dict[str, Any]:
         return self._monthly_summary
+
+    @Property(int, notify=dataChanged)
+    def monthlyDayCount(self) -> int:
+        return self._monthly_day_count
+
+    @Property(int, notify=dataChanged)
+    def monthlyLeadingBlanks(self) -> int:
+        return self._monthly_leading_blanks
 
     @Property("QVariantMap", notify=settingsChanged)
     def settings(self) -> Dict[str, Any]:
@@ -89,10 +106,16 @@ class AppBridge(QObject):
     @Slot()
     def refresh(self) -> None:
         rows = self.database.list_sessions(None)
-        self._planner_tasks = self._load_planner_tasks()
+        self._planner_tasks = self._load_planner_tasks(self._planner_date)
+        self._today_planner_tasks = self._load_planner_tasks(date.today())
         self._daily_summary, self._daily_hourly_data = self._build_daily(rows)
         self._weekly_records = self._build_weekly(rows)
-        self._monthly_levels, self._monthly_summary = self._build_monthly(rows)
+        (
+            self._monthly_levels,
+            self._monthly_summary,
+            self._monthly_day_count,
+            self._monthly_leading_blanks,
+        ) = self._build_monthly(rows)
         self.dataChanged.emit()
 
     @Slot(int, int)
@@ -143,6 +166,12 @@ class AppBridge(QObject):
     @Slot(int)
     def cyclePlannerTask(self, task_id: int) -> None:
         if task_id < 0:
+            for task in self._demo_tasks:
+                if task["taskId"] == task_id:
+                    task["taskState"] = (task["taskState"] + 1) % 3
+                    task["done"] = task["taskState"] == 1
+                    self.refresh()
+                    break
             return
         rows = {row.id: row for row in self.database.list_planner_tasks()}
         row = rows.get(task_id)
@@ -154,13 +183,32 @@ class AppBridge(QObject):
 
     @Slot(int)
     def deletePlannerTask(self, task_id: int) -> None:
-        if task_id >= 0:
-            self.database.delete_planner_task(task_id)
+        if task_id < 0:
+            self._demo_tasks = [task for task in self._demo_tasks if task["taskId"] != task_id]
             self.refresh()
+            return
+        self.database.delete_planner_task(task_id)
+        self.refresh()
 
     @Slot(int, str, str, str, str)
     def updatePlannerTask(self, task_id: int, title: str, start: str, end: str, duration: str) -> None:
         if task_id < 0 or not title.strip():
+            if task_id < 0 and title.strip():
+                for task in self._demo_tasks:
+                    if task["taskId"] == task_id:
+                        task.update(
+                            title=title.strip(),
+                            start=start.strip(),
+                            end=end.strip(),
+                            duration=duration.strip(),
+                            detail=_task_detail(
+                                _parse_time(start),
+                                _parse_time(end),
+                                _parse_duration(duration),
+                            ),
+                        )
+                        self.refresh()
+                        break
             return
         start_minute = _parse_time(start)
         end_minute = _parse_time(end)
@@ -201,10 +249,10 @@ class AppBridge(QObject):
         self._sound_effect.setVolume(max(0.0, min(1.0, volume / 100.0)))
         self._sound_effect.play()
 
-    def _load_planner_tasks(self) -> List[Dict[str, Any]]:
-        rows = [row for row in self.database.list_planner_tasks() if row.planned_date == self._planner_date.isoformat()]
+    def _load_planner_tasks(self, planned_date: date) -> List[Dict[str, Any]]:
+        rows = [row for row in self.database.list_planner_tasks() if row.planned_date == planned_date.isoformat()]
         if not rows:
-            return _demo_planner_tasks()
+            return [dict(task) for task in self._demo_tasks]
         status_values = {"pending": 0, "completed": 1, "deferred": 2}
         return [
             {
@@ -264,7 +312,9 @@ class AppBridge(QObject):
             )
         return result if has_data else _demo_weekly(start)
 
-    def _build_monthly(self, rows: List[SessionRow]) -> tuple[List[int], Dict[str, Any]]:
+    def _build_monthly(self, rows: List[SessionRow]) -> tuple[List[int], Dict[str, Any], int, int]:
+        day_count = calendar.monthrange(self._records_date.year, self._records_date.month)[1]
+        leading_blanks = (calendar.monthrange(self._records_date.year, self._records_date.month)[0] + 1) % 7
         month_rows = [
             row
             for row in rows
@@ -272,11 +322,14 @@ class AppBridge(QObject):
             == (self._records_date.year, self._records_date.month)
         ]
         if not month_rows:
+            demo_levels = [0, 1, 2, 3, 2, 0, 1, 1, 2, 4, 3, 2, 1, 0, 2, 3, 4, 4, 3, 2, 1, 0, 1, 3, 4, 2, 1, 0, 1, 2, 2][:day_count]
             return (
-                [0, 1, 2, 3, 2, 0, 1, 1, 2, 4, 3, 2, 1, 0, 2, 3, 4, 4, 3, 2, 1, 0, 1, 3, 4, 2, 1, 0, 1, 2, 2],
+                demo_levels,
                 {"study":"46시간 20분","focus":"38시간 12분","ratio":82,"days":19,"longest":"8일"},
+                day_count,
+                leading_blanks,
             )
-        days = [0.0] * 31
+        days = [0.0] * day_count
         for row in month_rows:
             day_index = _row_datetime(row).day - 1
             days[day_index] += row.focus_seconds
@@ -291,7 +344,12 @@ class AppBridge(QObject):
             "days": len(studied_dates),
             "longest": f"{_longest_streak(studied_dates)}일",
         }
-        return [0 if seconds <= 0 else min(4, max(1, round(seconds / 7200))) for seconds in days], summary
+        return (
+            [0 if seconds <= 0 else min(4, max(1, round(seconds / 7200))) for seconds in days],
+            summary,
+            day_count,
+            leading_blanks,
+        )
 
 
 def _row_datetime(row: SessionRow) -> datetime:

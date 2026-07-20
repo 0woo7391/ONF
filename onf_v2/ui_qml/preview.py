@@ -14,7 +14,7 @@ from onf_v2.ui_qml.app_bridge import AppBridge
 def run() -> int:
     QQuickStyle.setStyle("Basic")
     app = QGuiApplication(sys.argv)
-    app.setApplicationName("ONF V2 UI Preview")
+    app.setApplicationName("ONF V2")
 
     engine = QQmlApplicationEngine()
     bridge = AppBridge()

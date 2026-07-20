@@ -35,6 +35,11 @@ class QmlAppBridgeTests(unittest.TestCase):
             self.assertEqual(len(tasks), 1)
             self.assertEqual(tasks[0].planned_start_minute, 14 * 60)
             self.assertEqual(tasks[0].planned_end_minute, 15 * 60)
+            self.assertEqual(bridge.todayPlannerTasks[0]["title"], "물리 문제")
+
+            bridge.shiftPlannerDate(1)
+            self.assertNotEqual(bridge.plannerDayLabel, bridge.dayLabel)
+            self.assertEqual(bridge.todayPlannerTasks[0]["title"], "물리 문제")
 
             bridge.cyclePlannerTask(tasks[0].id)
             self.assertEqual(database.list_planner_tasks()[0].status, "completed")
@@ -66,6 +71,25 @@ class QmlAppBridgeTests(unittest.TestCase):
             saved = settings_store.load()
             self.assertEqual(saved.alert_volume, 37)
             self.assertEqual(saved.work_mode, "screen_writing")
+
+    def test_demo_tasks_are_interactive_and_month_length_is_dynamic(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bridge = AppBridge(
+                SessionDatabase(root / "onf.sqlite3"),
+                SettingsStore(root / "settings.json"),
+            )
+            first_id = bridge.plannerTasks[0]["taskId"]
+            bridge.cyclePlannerTask(first_id)
+            self.assertEqual(bridge.plannerTasks[0]["taskState"], 1)
+            initial_count = len(bridge.plannerTasks)
+            bridge.deletePlannerTask(first_id)
+            self.assertEqual(len(bridge.plannerTasks), initial_count - 1)
+
+            while bridge.monthLabel != "2026년 2월":
+                bridge.shiftRecords(2, -1)
+            self.assertEqual(bridge.monthlyDayCount, 28)
+            self.assertEqual(len(bridge.monthlyLevels), 28)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,8 @@ Item {
     property var levels: [0,1,2,3,2,0,1, 1,2,4,3,2,1,0, 2,3,4,4,3,2,1, 0,1,3,4,2,1,0, 1,2,2]
     property var summary: ({study:"46시간 20분",focus:"38시간 12분",ratio:82,days:19,longest:"8일"})
     property string monthLabel: "7월"
+    property int dayCount: 31
+    property int leadingBlankCount: 0
 
     ColumnLayout {
         anchors.fill: parent
@@ -57,17 +59,19 @@ Item {
                     columnSpacing: 8
                     rowSpacing: 8
                     Repeater {
-                        model: 31
+                        model: root.leadingBlankCount + root.dayCount
                         delegate: Rectangle {
                             id: dayCell
                             required property int index
-                            property int level: root.levels[index] || 0
+                            property int dayIndex: index - root.leadingBlankCount
+                            property bool isDay: dayIndex >= 0 && dayIndex < root.dayCount
+                            property int level: isDay ? (root.levels[dayIndex] || 0) : 0
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             Layout.minimumHeight: 48
                             radius: 6
-                            color: level === 0 ? "#EEF1F4" : level === 1 ? "#CFF3DC" : level === 2 ? "#91DEAC" : level === 3 ? "#3CCB70" : "#00A843"
-                            Text { anchors.centerIn: parent; text: dayCell.index + 1; color: dayCell.level >= 3 ? "white" : Theme.muted; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            color: !isDay ? "transparent" : level === 0 ? "#EEF1F4" : level === 1 ? "#CFF3DC" : level === 2 ? "#91DEAC" : level === 3 ? "#3CCB70" : "#00A843"
+                            Text { anchors.centerIn: parent; text: dayCell.isDay ? dayCell.dayIndex + 1 : ""; color: dayCell.level >= 3 ? "white" : Theme.muted; font.pixelSize: 11; font.weight: Font.DemiBold }
                         }
                     }
                 }

@@ -170,6 +170,8 @@ Item {
                 levels: root.backendObject ? root.backendObject.monthlyLevels : [0,1,2,3,2,0,1,1,2,4,3,2,1,0,2,3,4,4,3,2,1,0,1,3,4,2,1,0,1,2,2]
                 summary: root.backendObject ? root.backendObject.monthlySummary : ({study:"46시간 20분",focus:"38시간 12분",ratio:82,days:19,longest:"8일"})
                 monthLabel: root.backendObject ? root.backendObject.monthLabel : "2026년 7월"
+                dayCount: root.backendObject ? root.backendObject.monthlyDayCount : 31
+                leadingBlankCount: root.backendObject ? root.backendObject.monthlyLeadingBlanks : 0
             }
         }
 

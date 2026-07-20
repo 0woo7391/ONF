@@ -63,6 +63,17 @@ ApplicationWindow {
         sessionPaused = false
     }
 
+    function applyBackendSettings() {
+        if (!backendObject) return
+        var stored = backendObject.settings
+        focusMinutes = stored.pomodoro_focus_minutes || 25
+        breakMinutes = stored.pomodoro_short_break_minutes || 5
+        targetRounds = stored.pomodoro_cycles || 4
+        pomodoroSeconds = focusMinutes * 60
+        pomodoroMode = stored.session_mode === "pomodoro"
+        cameraVisible = !stored.camera_preview_hidden
+    }
+
     function parseClock(value) {
         if (!value || value.indexOf(":") < 0) return -1
         var parts = value.split(":")
@@ -75,7 +86,7 @@ ApplicationWindow {
     function refreshScheduledTask() {
         var wasAutoSelected = currentTaskAutoSelected
         var nowMinute = currentDateTime.getHours() * 60 + currentDateTime.getMinutes()
-        var source = backendObject ? backendObject.plannerTasks : todayTasks
+        var source = backendObject ? backendObject.todayPlannerTasks : todayTasks
         var bestTask = null
         var bestStart = -1
         var sourceCount = backendObject ? source.length : source.count
@@ -113,6 +124,7 @@ ApplicationWindow {
         enabled: window.backendObject !== null
         ignoreUnknownSignals: true
         function onDataChanged() { window.refreshScheduledTask() }
+        function onSettingsChanged() { window.applyBackendSettings() }
     }
 
     Timer {
@@ -236,7 +248,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 28
                             radius: 14
                             color: Theme.primarySoft
-                            Text { id: taskCount; anchors.centerIn: parent; text: (window.backendObject ? window.backendObject.plannerTasks.length : 3) + "개 계획"; color: Theme.primary; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Text { id: taskCount; anchors.centerIn: parent; text: (window.backendObject ? window.backendObject.todayPlannerTasks.length : 3) + "개 계획"; color: Theme.primary; font.pixelSize: 11; font.weight: Font.DemiBold }
                         }
                     }
 
@@ -253,7 +265,7 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         spacing: 7
                         clip: true
-                        model: window.backendObject ? window.backendObject.plannerTasks : todayTasks
+                        model: window.backendObject ? window.backendObject.todayPlannerTasks : todayTasks
                         delegate: Rectangle {
                             id: taskDelegate
                             required property string title
@@ -388,6 +400,8 @@ ApplicationWindow {
                                 onClicked: {
                                     window.pomodoroMode = modelData === "뽀모도로"
                                     window.pomodoroSeconds = window.focusMinutes * 60
+                                    if (window.backendObject)
+                                        window.backendObject.saveSettings({session_mode: window.pomodoroMode ? "pomodoro" : "free"})
                                 }
                                 contentItem: Text {
                                     text: modeButton.text
@@ -548,7 +562,11 @@ ApplicationWindow {
                             text: window.cameraVisible ? "◉" : "○"
                             ToolTip.visible: hovered
                             ToolTip.text: window.cameraVisible ? "카메라 화면 숨기기" : "카메라 화면 보이기"
-                            onClicked: window.cameraVisible = !window.cameraVisible
+                            onClicked: {
+                                window.cameraVisible = !window.cameraVisible
+                                if (window.backendObject)
+                                    window.backendObject.saveSettings({camera_preview_hidden: !window.cameraVisible})
+                            }
                             background: Rectangle { radius: Theme.radius; color: cameraToggle.hovered ? Theme.primarySoft : Theme.surfaceSoft; border.color: Theme.border }
                             contentItem: Text { text: cameraToggle.text; color: Theme.primary; font.pixelSize: 15; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                         }
@@ -663,5 +681,8 @@ ApplicationWindow {
         }
     }
 
-    onBackendObjectChanged: refreshScheduledTask()
+    onBackendObjectChanged: {
+        applyBackendSettings()
+        refreshScheduledTask()
+    }
 }

@@ -14,6 +14,10 @@ Item {
     property int shortBreakDefaultValue: storedSettings.pomodoro_short_break_minutes || 5
     property int longBreakDefaultValue: storedSettings.pomodoro_long_break_minutes || 15
     property int cycleDefaultValue: storedSettings.pomodoro_cycles || 4
+    property int breakDurationValue: storedSettings.break_duration_minutes || 5
+    property int absenceBreakValue: storedSettings.absence_to_break_minutes || 5
+    property bool autoStartBreakValue: storedSettings.pomodoro_auto_start_break === undefined ? true : storedSettings.pomodoro_auto_start_break
+    property bool autoStartNextValue: storedSettings.pomodoro_auto_start_next || false
     signal feedbackRequested(string message)
 
     function saveValues() {
@@ -24,12 +28,16 @@ Item {
                 mode: ["weak", "normal", "strong"][sensitivityCombo.currentIndex],
                 sound_enabled: soundSwitch.checked,
                 attention_alert_seconds: alertDelay.value,
+                break_duration_minutes: breakDurationValue,
+                absence_to_break_minutes: absenceBreakValue,
                 alert_sound: ["impact", "chime", "digital", "soft"][soundCombo.currentIndex],
                 alert_volume: Math.round(volumeSlider.value),
                 pomodoro_focus_minutes: focusDefaultValue,
                 pomodoro_short_break_minutes: shortBreakDefaultValue,
                 pomodoro_long_break_minutes: longBreakDefaultValue,
-                pomodoro_cycles: cycleDefaultValue
+                pomodoro_cycles: cycleDefaultValue,
+                pomodoro_auto_start_break: autoStartBreakValue,
+                pomodoro_auto_start_next: autoStartNextValue
             })
         }
         feedbackRequested("설정을 저장했습니다.")
@@ -103,7 +111,7 @@ Item {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 230
+                    Layout.preferredHeight: 286
                     radius: Theme.radius
                     color: Theme.surface
                     border.color: Theme.border
@@ -116,6 +124,31 @@ Item {
                             Text { text: "집중 알림"; color: Theme.text; font.pixelSize: 16; font.weight: Font.Bold }
                             Item { Layout.fillWidth: true }
                             Switch { id: soundSwitch; checked: root.storedSettings.sound_enabled === undefined ? true : root.storedSettings.sound_enabled; text: "사용" }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Text { text: "기본 휴식 시간"; color: Theme.muted; font.pixelSize: 10 }
+                                ValueStepper {
+                                    value: root.breakDurationValue
+                                    minimumValue: 1
+                                    maximumValue: 30
+                                    suffix: "분"
+                                    onValueChanged: root.breakDurationValue = value
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Text { text: "자리 비움 자동 휴식"; color: Theme.muted; font.pixelSize: 10 }
+                                ValueStepper {
+                                    value: root.absenceBreakValue
+                                    minimumValue: 1
+                                    maximumValue: 30
+                                    suffix: "분"
+                                    onValueChanged: root.absenceBreakValue = value
+                                }
+                            }
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -152,7 +185,7 @@ Item {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 180
+                    Layout.preferredHeight: 224
                     radius: Theme.radius
                     color: Theme.surface
                     border.color: Theme.border
@@ -188,6 +221,12 @@ Item {
                             }
                         }
                         Text { text: "학습 화면에서 세션별로 다시 조정할 수 있습니다."; color: Theme.muted; font.pixelSize: 10 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Switch { checked: root.autoStartBreakValue; text: "휴식 자동 시작"; onToggled: root.autoStartBreakValue = checked }
+                            Switch { checked: root.autoStartNextValue; text: "다음 집중 자동 시작"; onToggled: root.autoStartNextValue = checked }
+                            Item { Layout.fillWidth: true }
+                        }
                     }
                 }
             }

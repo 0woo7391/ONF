@@ -45,7 +45,10 @@ class QmlLearningUiTests(unittest.TestCase):
         self.assertEqual(window.property("minimumWidth"), 1024)
         self.assertEqual(window.property("minimumHeight"), 680)
         self.assertEqual(window.property("currentTask"), "영어 독해 지문 2개")
-        self.assertTrue(window.property("pomodoroMode"))
+        self.assertEqual(
+            window.property("pomodoroMode"),
+            bridge.settings["session_mode"] == "pomodoro",
+        )
         self.assertTrue(window.property("cameraVisible"))
 
         timeline = window.findChild(QObject, "studyTimeline")
