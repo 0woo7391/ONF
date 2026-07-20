@@ -50,8 +50,18 @@ Item {
                 var top = 2
                 var rows = 7
                 var columns = 6
-                var rowHeight = (height - top - 2) / rows
+                var currentRowScale = 1.5
+                var rowHeight = (height - top - 2) / (rows - 1 + currentRowScale)
                 var cellWidth = (width - labelWidth - 2) / columns
+                var rowTops = []
+                var rowHeights = []
+                var nextTop = top
+                for (var rowIndex = 0; rowIndex < rows; rowIndex++) {
+                    var sizedHeight = rowIndex === 3 ? rowHeight * currentRowScale : rowHeight
+                    rowTops.push(nextTop)
+                    rowHeights.push(sizedHeight)
+                    nextTop += sizedHeight
+                }
                 var focus = [
                     [0, 0, 0, 0, 0, 0],
                     [0, 0, 82, 88, 91, 76],
@@ -66,24 +76,30 @@ Item {
                 ctx.textAlign = "left"
                 ctx.textBaseline = "middle"
                 for (var row = 0; row < rows; row++) {
-                    var y = top + row * rowHeight
-                    ctx.font = row === 3 ? "bold 13px Segoe UI" : "9px Segoe UI"
+                    var y = rowTops[row]
+                    var visibleRowHeight = rowHeights[row]
+                    ctx.font = row === 3 ? "bold 14px Segoe UI" : "9px Segoe UI"
                     ctx.fillStyle = row === 3 ? Theme.primary : Theme.muted
-                    ctx.fillText(root.hourLabel(row - 3), 1, y + rowHeight / 2)
+                    ctx.fillText(root.hourLabel(row - 3), 1, y + visibleRowHeight / 2)
 
                     for (var column = 0; column < columns; column++) {
                         var x = labelWidth + column * cellWidth
                         ctx.fillStyle = "#FAFBFC"
-                        ctx.fillRect(x + 1, y + 1, cellWidth - 2, rowHeight - 2)
+                        ctx.fillRect(x + 1, y + 1, cellWidth - 2, visibleRowHeight - 2)
                         ctx.strokeStyle = Theme.border
                         ctx.lineWidth = 0.7
-                        ctx.strokeRect(x + 1, y + 1, cellWidth - 2, rowHeight - 2)
+                        ctx.strokeRect(x + 1, y + 1, cellWidth - 2, visibleRowHeight - 2)
 
                         var value = focus[row][column]
                         if (value > 0) {
                             ctx.fillStyle = root.focusColor(value)
                             ctx.globalAlpha = 0.86
-                            ctx.fillRect(x + 2, y + 3, cellWidth - 4, rowHeight - 6)
+                            ctx.fillRect(
+                                x + 2,
+                                y + 3,
+                                cellWidth - 4,
+                                visibleRowHeight - 6
+                            )
                             ctx.globalAlpha = 1
                         }
                     }
@@ -91,15 +107,16 @@ Item {
 
                 function planned(row, column, span, label) {
                     var x = labelWidth + column * cellWidth + 2
-                    var y = top + row * rowHeight + 3
+                    var y = rowTops[row] + 3
+                    var plannedHeight = rowHeights[row] - 6
                     ctx.setLineDash([4, 3])
                     ctx.strokeStyle = "#7DA7E8"
                     ctx.lineWidth = 1.3
-                    ctx.strokeRect(x, y, cellWidth * span - 4, rowHeight - 6)
+                    ctx.strokeRect(x, y, cellWidth * span - 4, plannedHeight)
                     ctx.setLineDash([])
                     ctx.fillStyle = Theme.primary
                     ctx.font = "8px Segoe UI"
-                    ctx.fillText(label, x + 4, y + (rowHeight - 6) / 2)
+                    ctx.fillText(label, x + 4, y + plannedHeight / 2)
                 }
 
                 planned(0, 1, 2, "영어 독해")

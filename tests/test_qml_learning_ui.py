@@ -60,6 +60,13 @@ class QmlLearningUiTests(unittest.TestCase):
         window.setProperty("completedRounds", 2)
         self.assertTrue(QMetaObject.invokeMethod(window, "endStudySession"))
         self.assertFalse(window.property("sessionRunning"))
+        self.assertEqual(window.property("elapsedSeconds"), 125)
+        self.assertEqual(window.property("pomodoroSeconds"), 310)
+        self.assertEqual(window.property("completedRounds"), 2)
+        self.assertEqual(window.property("todayStudySeconds"), 925)
+
+        self.assertTrue(QMetaObject.invokeMethod(window, "startStudySession"))
+        self.assertTrue(window.property("sessionRunning"))
         self.assertEqual(window.property("elapsedSeconds"), 0)
         self.assertEqual(window.property("pomodoroSeconds"), 25 * 60)
         self.assertEqual(window.property("completedRounds"), 0)

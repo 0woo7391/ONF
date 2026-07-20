@@ -44,12 +44,17 @@ ApplicationWindow {
         return twoDigits(minutes) + ":" + twoDigits(secs)
     }
 
-    function endStudySession() {
-        sessionRunning = false
-        sessionPaused = false
+    function startStudySession() {
         elapsedSeconds = 0
         pomodoroSeconds = focusMinutes * 60
         completedRounds = 0
+        sessionRunning = true
+        sessionPaused = false
+    }
+
+    function endStudySession() {
+        sessionRunning = false
+        sessionPaused = false
     }
 
     Timer {
@@ -383,8 +388,7 @@ ApplicationWindow {
                             tone: "primary"
                             onClicked: {
                                 if (!window.sessionRunning) {
-                                    window.sessionRunning = true
-                                    window.sessionPaused = false
+                                    window.startStudySession()
                                     feedback.showMessage("학습을 시작했습니다.")
                                 } else {
                                     window.sessionPaused = !window.sessionPaused
