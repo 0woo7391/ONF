@@ -4,6 +4,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "."
 import "components"
+import "pages"
 
 ApplicationWindow {
     id: window
@@ -29,6 +30,7 @@ ApplicationWindow {
     property int completedRounds: 0
     property string currentTask: "영어 독해 지문 2개"
     property date currentDateTime: new Date()
+    property int currentTabIndex: 0
 
     function twoDigits(value) {
         return value < 10 ? "0" + value : value
@@ -102,22 +104,24 @@ ApplicationWindow {
                     model: ["학습", "플래너", "기록", "설정"]
                     delegate: Button {
                         id: navButton
+                        required property int index
                         required property string modelData
                         text: modelData
                         implicitWidth: 76
                         implicitHeight: 40
                         flat: true
+                        onClicked: window.currentTabIndex = navButton.index
                         contentItem: Text {
                             text: navButton.text
-                            color: navButton.text === "학습" ? Theme.primary : Theme.muted
+                            color: window.currentTabIndex === navButton.index ? Theme.primary : Theme.muted
                             font.pixelSize: 14
-                            font.weight: navButton.text === "학습" ? Font.DemiBold : Font.Medium
+                            font.weight: window.currentTabIndex === navButton.index ? Font.DemiBold : Font.Medium
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                         }
                         background: Rectangle {
                             radius: Theme.radius
-                            color: navButton.text === "학습" ? Theme.primarySoft : navButton.hovered ? "#F2F5F8" : "transparent"
+                            color: window.currentTabIndex === navButton.index ? Theme.primarySoft : navButton.hovered ? "#F2F5F8" : "transparent"
                             Behavior on color { ColorAnimation { duration: Theme.fast } }
                         }
                     }
@@ -145,6 +149,7 @@ ApplicationWindow {
         }
 
         RowLayout {
+            visible: window.currentTabIndex === 0
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 12
@@ -527,6 +532,27 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+
+        PlannerPage {
+            visible: window.currentTabIndex === 1
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onFeedbackRequested: function(message) { feedback.showMessage(message) }
+        }
+
+        RecordsPage {
+            visible: window.currentTabIndex === 2
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onFeedbackRequested: function(message) { feedback.showMessage(message) }
+        }
+
+        SettingsPage {
+            visible: window.currentTabIndex === 3
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onFeedbackRequested: function(message) { feedback.showMessage(message) }
         }
     }
 

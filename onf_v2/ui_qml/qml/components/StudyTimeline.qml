@@ -22,6 +22,14 @@ Item {
         return Theme.success
     }
 
+    function rowOpacity(row) {
+        var distance = Math.abs(row - 3)
+        if (distance === 0) return 1.0
+        if (distance === 1) return 0.72
+        if (distance === 2) return 0.52
+        return 0.38
+    }
+
     function rangeText() {
         return hourLabel(-3) + ":00 — " + hourLabel(3) + ":59"
     }
@@ -78,22 +86,27 @@ Item {
                 for (var row = 0; row < rows; row++) {
                     var y = rowTops[row]
                     var visibleRowHeight = rowHeights[row]
+                    var emphasis = root.rowOpacity(row)
                     ctx.font = row === 3 ? "bold 14px Segoe UI" : "9px Segoe UI"
                     ctx.fillStyle = row === 3 ? Theme.primary : Theme.muted
+                    ctx.globalAlpha = row === 3 ? 1 : Math.max(0.52, emphasis)
                     ctx.fillText(root.hourLabel(row - 3), 1, y + visibleRowHeight / 2)
+                    ctx.globalAlpha = 1
 
                     for (var column = 0; column < columns; column++) {
                         var x = labelWidth + column * cellWidth
                         ctx.fillStyle = "#FAFBFC"
+                        ctx.globalAlpha = row === 3 ? 1 : 0.48 + emphasis * 0.32
                         ctx.fillRect(x + 1, y + 1, cellWidth - 2, visibleRowHeight - 2)
                         ctx.strokeStyle = Theme.border
                         ctx.lineWidth = 0.7
                         ctx.strokeRect(x + 1, y + 1, cellWidth - 2, visibleRowHeight - 2)
+                        ctx.globalAlpha = 1
 
                         var value = focus[row][column]
                         if (value > 0) {
                             ctx.fillStyle = root.focusColor(value)
-                            ctx.globalAlpha = 0.86
+                            ctx.globalAlpha = 0.92 * emphasis
                             ctx.fillRect(
                                 x + 2,
                                 y + 3,
@@ -112,11 +125,13 @@ Item {
                     ctx.setLineDash([4, 3])
                     ctx.strokeStyle = "#7DA7E8"
                     ctx.lineWidth = 1.3
+                    ctx.globalAlpha = root.rowOpacity(row)
                     ctx.strokeRect(x, y, cellWidth * span - 4, plannedHeight)
                     ctx.setLineDash([])
                     ctx.fillStyle = Theme.primary
                     ctx.font = "8px Segoe UI"
                     ctx.fillText(label, x + 4, y + plannedHeight / 2)
+                    ctx.globalAlpha = 1
                 }
 
                 planned(0, 1, 2, "영어 독해")

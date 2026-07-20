@@ -37,9 +37,27 @@ class QmlLearningUiTests(unittest.TestCase):
         timeline = window.findChild(QObject, "studyTimeline")
         pomodoro_ring = window.findChild(QObject, "pomodoroRing")
         camera_panel = window.findChild(QObject, "cameraPanel")
+        planner_page = window.findChild(QObject, "plannerPage")
+        records_page = window.findChild(QObject, "recordsPage")
+        settings_page = window.findChild(QObject, "settingsPage")
         self.assertIsNotNone(timeline)
         self.assertIsNotNone(pomodoro_ring)
         self.assertIsNotNone(camera_panel)
+        self.assertIsNotNone(planner_page)
+        self.assertIsNotNone(records_page)
+        self.assertIsNotNone(settings_page)
+
+        for tab_index in range(4):
+            window.setProperty("currentTabIndex", tab_index)
+            self.app.processEvents()
+            self.assertEqual(window.property("currentTabIndex"), tab_index)
+
+        for period_index in range(3):
+            records_page.setProperty("periodIndex", period_index)
+            self.app.processEvents()
+            self.assertEqual(records_page.property("periodIndex"), period_index)
+
+        window.setProperty("currentTabIndex", 0)
 
         timeline.setProperty("currentHour", 1)
         self.assertEqual(timeline.property("visibleRange"), "22:00 — 04:59")
