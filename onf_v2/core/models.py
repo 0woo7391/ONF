@@ -168,6 +168,7 @@ class CalibrationProfile:
     sample_count: int
     quality_score: float
     feature_spread: Dict[str, float] = field(default_factory=dict)
+    target_centers: Dict[str, Dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass

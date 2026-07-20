@@ -28,6 +28,7 @@ class AttentionEngine:
             duration_seconds=5.0,
             max_yaw_stdev=7.0,
             max_pitch_stdev=7.0,
+            guided_targets=("center", "left", "right", "up", "down", "natural"),
             instruction="화면의 평소 작업 영역을 자연스럽게 바라봐 주세요.",
             movement_failure_message=(
                 "화면 영역 밖의 움직임이 너무 많았습니다. 화면을 보며 다시 설정하세요."
@@ -39,6 +40,7 @@ class AttentionEngine:
             duration_seconds=7.0,
             max_yaw_stdev=10.0,
             max_pitch_stdev=12.0,
+            guided_targets=("center", "up", "down", "left", "right", "natural"),
             instruction="종이나 태블릿의 필기 영역을 자연스럽게 바라봐 주세요.",
             movement_failure_message=(
                 "필기 영역 밖의 움직임이 너무 많았습니다. 실제 필기 위치를 보며 다시 설정하세요."

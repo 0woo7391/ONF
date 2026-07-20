@@ -998,6 +998,138 @@ class CalibrationProgressButton(QPushButton):
         painter.end()
 
 
+class GuidedCalibrationOverlay(QWidget):
+    TARGET_POSITIONS = {
+        "center": (0.50, 0.50),
+        "left": (0.20, 0.50),
+        "right": (0.80, 0.50),
+        "up": (0.50, 0.24),
+        "down": (0.50, 0.76),
+    }
+    TARGET_LABELS = {
+        "center": "가운데",
+        "left": "왼쪽",
+        "right": "오른쪽",
+        "up": "위쪽",
+        "down": "아래쪽",
+        "natural": "자연스럽게",
+    }
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.target_key = ""
+        self.target_progress = 0.0
+        self.target_index = 0
+        self.total_targets = 0
+        self.is_writing = False
+        self.target_area = QRectF()
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_NoSystemBackground)
+        self.hide()
+
+    def set_target_area(self, area: QRectF) -> None:
+        self.target_area = area
+        self.update()
+
+    def set_stage(
+        self,
+        target_key: str,
+        target_progress: float,
+        target_index: int,
+        total_targets: int,
+        is_writing: bool,
+    ) -> None:
+        self.target_key = target_key
+        self.target_progress = min(1.0, max(0.0, target_progress))
+        self.target_index = target_index
+        self.total_targets = total_targets
+        self.is_writing = is_writing
+        self.show()
+        self.raise_()
+        self.update()
+
+    def clear_stage(self) -> None:
+        self.target_key = ""
+        self.hide()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        if not self.target_key:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        area = self.target_area
+        if area.isEmpty():
+            area = QRectF(0, 0, self.width(), self.height())
+        banner_width = min(560.0, max(320.0, area.width() - 36.0))
+        banner = QRectF(area.center().x() - banner_width / 2, area.top() + 14, banner_width, 76)
+        painter.setPen(QPen(QColor(207, 224, 255, 230), 1))
+        painter.setBrush(QColor(255, 255, 255, 242))
+        painter.drawRoundedRect(banner, 8, 8)
+
+        label = self.TARGET_LABELS.get(self.target_key, "안내 위치")
+        step = (
+            f"{self.target_index + 1}/{self.total_targets}"
+            if self.total_targets
+            else ""
+        )
+        if self.is_writing:
+            instruction = (
+                "필기 영역을 평소처럼 자연스럽게 둘러봐 주세요."
+                if self.target_key == "natural"
+                else f"종이의 {label} 영역을 자연스럽게 바라봐 주세요."
+            )
+        else:
+            instruction = (
+                "화면 작업 영역을 평소처럼 자연스럽게 둘러봐 주세요."
+                if self.target_key == "natural"
+                else f"화면의 {label} 표시를 자연스럽게 바라봐 주세요."
+            )
+        painter.setPen(QColor("#191F28"))
+        painter.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        painter.drawText(
+            QRectF(banner.left() + 18, banner.top() + 11, banner.width() - 36, 26),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            f"{step}  {label}",
+        )
+        painter.setPen(QColor("#4E5968"))
+        painter.setFont(QFont("Segoe UI", 10))
+        painter.drawText(
+            QRectF(banner.left() + 18, banner.top() + 39, banner.width() - 36, 24),
+            Qt.AlignLeft | Qt.AlignVCenter,
+            instruction,
+        )
+
+        track = QRectF(banner.left() + 18, banner.bottom() - 8, banner.width() - 36, 3)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#DDE3EA"))
+        painter.drawRoundedRect(track, 1.5, 1.5)
+        painter.setBrush(QColor("#3182F6"))
+        painter.drawRoundedRect(
+            QRectF(track.left(), track.top(), track.width() * self.target_progress, 3),
+            1.5,
+            1.5,
+        )
+
+        if not self.is_writing and self.target_key in self.TARGET_POSITIONS:
+            x_ratio, y_ratio = self.TARGET_POSITIONS[self.target_key]
+            center = QPoint(
+                int(area.left() + area.width() * x_ratio),
+                int(area.top() + area.height() * y_ratio),
+            )
+            painter.setPen(QPen(QColor(255, 255, 255, 235), 9))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, 24, 24)
+            painter.setPen(QPen(QColor("#3182F6"), 4))
+            painter.drawEllipse(center, 24, 24)
+            painter.setPen(QPen(QColor("#3182F6"), 2))
+            painter.drawLine(center.x() - 34, center.y(), center.x() - 12, center.y())
+            painter.drawLine(center.x() + 12, center.y(), center.x() + 34, center.y())
+            painter.drawLine(center.x(), center.y() - 34, center.x(), center.y() - 12)
+            painter.drawLine(center.x(), center.y() + 12, center.x(), center.y() + 34)
+        painter.end()
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -1182,6 +1314,7 @@ class MainWindow(QMainWindow):
         self.action_feedback_label = QLabel("", root)
         self.action_feedback_label.setObjectName("ActionFeedback")
         self.action_feedback_label.setVisible(False)
+        self.calibration_guide_overlay = GuidedCalibrationOverlay(root)
         header.addStretch(1)
 
         self.app_state_label = QLabel("● 준비 중")
@@ -2805,6 +2938,11 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
+        if hasattr(self, "calibration_guide_overlay"):
+            parent = self.calibration_guide_overlay.parentWidget()
+            if parent is not None:
+                self.calibration_guide_overlay.setGeometry(parent.rect())
+                self._update_calibration_guide_area()
         if hasattr(self, "action_feedback_label") and self.action_feedback_label.isVisible():
             self._position_action_feedback()
 
@@ -3218,6 +3356,7 @@ class MainWindow(QMainWindow):
             )
             self._show_action_feedback("화면 자세를 먼저 설정하세요", "#F04452")
             return
+        self.tabs.setCurrentIndex(1)
         self.engine.start_calibration(time.monotonic(), target=target)
         self.last_calibration_status_logged = None
         self.session.app_state = AppState.CALIBRATING
@@ -3233,9 +3372,43 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"{target_label} 기준 설정 중")
         self.status_label.setStyleSheet("color: #F59E0B;")
         self.reason_label.setText(
-            f"평소 {target_label} 작업 자세를 유지해 주세요. 현재 위치가 기준으로 저장됩니다."
+            f"안내되는 순서에 따라 평소 {target_label} 작업 영역을 자연스럽게 바라봐 주세요."
+        )
+        manager = (
+            self.engine.writing_calibration
+            if target == "writing"
+            else self.engine.calibration
+        )
+        parent = self.calibration_guide_overlay.parentWidget()
+        if parent is not None:
+            self.calibration_guide_overlay.setGeometry(parent.rect())
+        self._update_calibration_guide_area()
+        self.calibration_guide_overlay.set_stage(
+            manager.current_target,
+            0.0,
+            0,
+            len(manager.guided_targets),
+            target == "writing",
         )
         self._show_action_feedback(f"{target_label} 자세 설정 시작")
+
+    def _update_calibration_guide_area(self) -> None:
+        if not hasattr(self, "camera_label") or not hasattr(
+            self, "calibration_guide_overlay"
+        ):
+            return
+        parent = self.calibration_guide_overlay.parentWidget()
+        if parent is None:
+            return
+        top_left = self.camera_label.mapTo(parent, QPoint(0, 0))
+        self.calibration_guide_overlay.set_target_area(
+            QRectF(
+                top_left.x(),
+                top_left.y(),
+                self.camera_label.width(),
+                self.camera_label.height(),
+            )
+        )
 
     def _start_session(
         self,
@@ -3856,15 +4029,32 @@ class MainWindow(QMainWindow):
         )
         if progress.status == CalibrationStatus.COLLECTING:
             self._update_calibration_controls()
+            target_name = GuidedCalibrationOverlay.TARGET_LABELS.get(
+                progress.target_key,
+                "작업 영역",
+            )
+            self._update_calibration_guide_area()
+            self.calibration_guide_overlay.set_stage(
+                progress.target_key,
+                progress.target_progress,
+                progress.target_index,
+                progress.total_targets,
+                self.engine.active_calibration_target == "writing",
+            )
+            if progress.stage_changed and self.settings.sound_enabled:
+                self._play_sound(max(8, int(self.settings.alert_volume * 0.35)))
             self.reason_label.setText(
-                f"{target_label} 기준 자세 수집 중: {pct}% "
+                f"{target_label} 작업 영역 설정 중: {pct}% "
                 f"({progress.valid_samples}/{progress.target_samples}개 유효 샘플)\n"
+                f"{progress.target_index + 1}/{progress.total_targets}단계 · "
+                f"{target_name} · 단계 진행 {int(progress.target_progress * 100)}%\n"
                 f"{progress.message}"
             )
             self.tracking_label.setText(
-                f"{target_label} 자세 표본을 확인하고 있습니다."
+                "유효한 얼굴과 양쪽 눈이 확인될 때만 진행됩니다."
             )
         elif progress.status == CalibrationStatus.READY:
+            self.calibration_guide_overlay.clear_stage()
             target_button.set_progress(1.0)
             self._update_calibration_controls()
             self._play_alert_sound()
@@ -3878,6 +4068,7 @@ class MainWindow(QMainWindow):
                 )
             self.tracking_label.setText(f"{target_label} 기준 저장 완료")
         elif progress.status == CalibrationStatus.FAILED:
+            self.calibration_guide_overlay.clear_stage()
             target_button.set_progress(0.0)
             self._update_calibration_controls()
             self._play_alert_sound()

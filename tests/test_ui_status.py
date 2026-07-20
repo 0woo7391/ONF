@@ -121,6 +121,47 @@ class PersistentStatusPanelTests(unittest.TestCase):
         window.close()
 
     @patch.object(MainWindow, "_open_camera_and_model", lambda self: None)
+    def test_guided_calibration_updates_overlay_and_stage_sound(self):
+        window = MainWindow()
+        window.settings.sound_enabled = True
+        window.settings.alert_volume = 60
+        window.session.app_state = AppState.CALIBRATING
+        window.engine.active_calibration_target = "screen"
+
+        with patch.object(window, "_play_sound") as play_sound:
+            window._refresh_calibration(
+                CalibrationProgress(
+                    status=CalibrationStatus.COLLECTING,
+                    progress=0.3,
+                    valid_samples=24,
+                    target_samples=84,
+                    message="화면의 왼쪽을 바라봐 주세요.",
+                    target_key="left",
+                    target_index=1,
+                    total_targets=6,
+                    target_progress=0.5,
+                    stage_changed=True,
+                )
+            )
+
+        self.assertFalse(window.calibration_guide_overlay.isHidden())
+        self.assertEqual(window.calibration_guide_overlay.target_key, "left")
+        self.assertIn("2/6단계", window.reason_label.text())
+        play_sound.assert_called_once_with(21)
+
+        window._refresh_calibration(
+            CalibrationProgress(
+                status=CalibrationStatus.READY,
+                progress=1.0,
+                valid_samples=84,
+                target_samples=84,
+                message="저장되었습니다.",
+            )
+        )
+        self.assertTrue(window.calibration_guide_overlay.isHidden())
+        window.close()
+
+    @patch.object(MainWindow, "_open_camera_and_model", lambda self: None)
     def test_camera_change_runs_without_blocking_ui_thread(self):
         window = MainWindow()
         window._persist_settings = lambda: True

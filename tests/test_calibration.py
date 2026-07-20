@@ -105,6 +105,72 @@ class CalibrationManagerTest(unittest.TestCase):
         self.assertGreater(progress.profile.feature_spread["gaze_x"], 0.0)
         self.assertGreater(progress.profile.feature_spread["gaze_y"], 0.0)
 
+    def test_guided_calibration_collects_direction_centers(self):
+        manager = CalibrationManager(
+            guided_targets=("center", "left", "right", "up", "down", "natural"),
+            samples_per_target=2,
+            natural_samples=2,
+            max_guided_seconds=10.0,
+        )
+        manager.start(0.0)
+        values = {
+            "center": (0.0, 0.0, 0.50, 0.50),
+            "left": (-5.0, 0.0, 0.40, 0.50),
+            "right": (5.0, 0.0, 0.60, 0.50),
+            "up": (0.0, -5.0, 0.50, 0.40),
+            "down": (0.0, 5.0, 0.50, 0.60),
+            "natural": (1.0, 1.0, 0.52, 0.52),
+        }
+        progress = None
+        timestamp = 0.0
+        for target in manager.guided_targets:
+            yaw, pitch, gaze_x, gaze_y = values[target]
+            for _ in range(2):
+                sample = observation(timestamp, yaw=yaw, pitch=pitch)
+                sample.gaze_x = gaze_x
+                sample.gaze_y = gaze_y
+                progress = manager.update(sample)
+                timestamp += 0.1
+
+        self.assertEqual(progress.status, CalibrationStatus.READY)
+        self.assertEqual(set(progress.profile.target_centers), set(manager.guided_targets))
+        self.assertLess(
+            progress.profile.target_centers["left"]["gaze_x"],
+            progress.profile.target_centers["right"]["gaze_x"],
+        )
+
+    def test_guided_calibration_pauses_on_invalid_sample(self):
+        manager = CalibrationManager(
+            guided_targets=("center", "left", "right", "up", "down"),
+            samples_per_target=2,
+        )
+        manager.start(0.0)
+
+        progress = manager.update(
+            FrameObservation(timestamp=0.2, camera_ok=True, face_detected=False)
+        )
+
+        self.assertEqual(progress.target_key, "center")
+        self.assertEqual(progress.target_progress, 0.0)
+        self.assertEqual(progress.valid_samples, 0)
+
+    def test_guided_calibration_rejects_missing_direction_change(self):
+        manager = CalibrationManager(
+            guided_targets=("center", "left", "right", "up", "down"),
+            samples_per_target=2,
+            max_guided_seconds=10.0,
+        )
+        manager.start(0.0)
+        progress = None
+        timestamp = 0.0
+        for _target in manager.guided_targets:
+            for _ in range(2):
+                progress = manager.update(observation(timestamp, yaw=0.0, pitch=0.0))
+                timestamp += 0.1
+
+        self.assertEqual(progress.status, CalibrationStatus.FAILED)
+        self.assertIn("시선 방향 변화", progress.message)
+
 
 if __name__ == "__main__":
     unittest.main()
