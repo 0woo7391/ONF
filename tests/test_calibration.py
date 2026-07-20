@@ -82,6 +82,29 @@ class CalibrationManagerTest(unittest.TestCase):
         self.assertEqual(progress.status, CalibrationStatus.FAILED)
         self.assertIn("얼굴을 찾지 못했습니다", progress.message)
 
+    def test_profile_stores_robust_feature_spread(self):
+        manager = CalibrationManager(
+            duration_seconds=1.0,
+            max_yaw_stdev=10.0,
+            max_pitch_stdev=10.0,
+        )
+        manager.start(0.0)
+        for idx in range(20):
+            sample = observation(
+                idx * 0.06,
+                yaw=float((idx % 5) - 2),
+                pitch=2.0 + float((idx % 5) - 2) * 2.0,
+            )
+            sample.gaze_x = 0.5 + float((idx % 3) - 1) * 0.03
+            sample.gaze_y = 0.5 + float((idx % 3) - 1) * 0.04
+            progress = manager.update(sample)
+
+        self.assertEqual(progress.status, CalibrationStatus.READY)
+        self.assertGreater(progress.profile.feature_spread["yaw"], 0.0)
+        self.assertGreater(progress.profile.feature_spread["pitch"], 0.0)
+        self.assertGreater(progress.profile.feature_spread["gaze_x"], 0.0)
+        self.assertGreater(progress.profile.feature_spread["gaze_y"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

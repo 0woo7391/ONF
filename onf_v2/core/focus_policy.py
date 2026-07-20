@@ -10,6 +10,7 @@ from .models import (
     Mode,
     ObservationState,
     RelativeMetrics,
+    Thresholds,
 )
 
 
@@ -117,8 +118,12 @@ class FocusPolicy:
         self.stabilizer.reset()
         self.no_face_started_at = None
 
-    def classify_metrics(self, metrics: RelativeMetrics) -> ObservationState:
-        thresholds = MODE_THRESHOLDS[self.mode]
+    def classify_metrics(
+        self,
+        metrics: RelativeMetrics,
+        thresholds: Optional[Thresholds] = None,
+    ) -> ObservationState:
+        thresholds = thresholds or MODE_THRESHOLDS[self.mode]
         current = self.stabilizer.current
         if metrics.confidence < thresholds.min_confidence:
             return ObservationState.LOW_CONFIDENCE

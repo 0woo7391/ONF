@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 from .calibration import CalibrationManager, CalibrationProgress
@@ -14,6 +14,7 @@ from .models import (
     Mode,
     ObservationState,
     RelativeMetrics,
+    Thresholds,
 )
 from .quality_gate import QualityGate
 from .temporal_filter import TemporalFilter
@@ -22,8 +23,28 @@ from .temporal_filter import TemporalFilter
 @dataclass
 class AttentionEngine:
     mode: Mode = Mode.NORMAL
-    calibration: CalibrationManager = field(default_factory=CalibrationManager)
-    writing_calibration: CalibrationManager = field(default_factory=CalibrationManager)
+    calibration: CalibrationManager = field(
+        default_factory=lambda: CalibrationManager(
+            duration_seconds=5.0,
+            max_yaw_stdev=7.0,
+            max_pitch_stdev=7.0,
+            instruction="화면의 평소 작업 영역을 자연스럽게 바라봐 주세요.",
+            movement_failure_message=(
+                "화면 영역 밖의 움직임이 너무 많았습니다. 화면을 보며 다시 설정하세요."
+            ),
+        )
+    )
+    writing_calibration: CalibrationManager = field(
+        default_factory=lambda: CalibrationManager(
+            duration_seconds=7.0,
+            max_yaw_stdev=10.0,
+            max_pitch_stdev=12.0,
+            instruction="종이나 태블릿의 필기 영역을 자연스럽게 바라봐 주세요.",
+            movement_failure_message=(
+                "필기 영역 밖의 움직임이 너무 많았습니다. 실제 필기 위치를 보며 다시 설정하세요."
+            ),
+        )
+    )
     quality_gate: QualityGate = field(default_factory=QualityGate)
     filter: TemporalFilter = field(default_factory=TemporalFilter)
     writing_filter: TemporalFilter = field(default_factory=TemporalFilter)
@@ -155,7 +176,10 @@ class AttentionEngine:
                 confidence=confidence,
             )
 
-        raw = self.policy.classify_metrics(relative)
+        raw = self.policy.classify_metrics(
+            relative,
+            thresholds=self._profile_thresholds(matched_profile),
+        )
         decision = self.policy.decide(
             raw,
             observation.timestamp,
@@ -186,7 +210,7 @@ class AttentionEngine:
     ) -> Tuple[str, RelativeMetrics, Dict[str, float]]:
         metrics_by_profile = dict(candidates)
         distances = {
-            profile: self._profile_distance(metrics)
+            profile: self._profile_distance(profile, metrics)
             for profile, metrics in candidates
         }
         best_profile = min(distances, key=distances.get)
@@ -219,7 +243,13 @@ class AttentionEngine:
         self.profile_switch_candidate = None
         self.profile_switch_started_at = None
 
-    def _profile_distance(self, metrics: RelativeMetrics) -> float:
+    def _profile_distance(
+        self,
+        _profile_name: str,
+        metrics: RelativeMetrics,
+    ) -> float:
+        # Profile selection stays center-based so a naturally wider writing
+        # range does not absorb nearby screen observations.
         thresholds = MODE_THRESHOLDS[self.mode]
         return (
             abs(metrics.yaw_delta_deg) / max(thresholds.yaw_enter_deg, 1e-6)
@@ -230,3 +260,87 @@ class AttentionEngine:
             + abs(metrics.gaze_y_delta) / max(thresholds.gaze_y_enter, 1e-6)
             + metrics.face_scale_delta / max(thresholds.max_face_scale_delta, 1e-6)
         )
+
+    def _profile_thresholds(self, profile_name: str) -> Thresholds:
+        base = MODE_THRESHOLDS[self.mode]
+        profile = (
+            self.writing_calibration.profile
+            if profile_name == "writing"
+            else self.calibration.profile
+        )
+        if profile is None or not profile.feature_spread:
+            return base
+
+        spread = profile.feature_spread
+        yaw_enter = self._expanded_limit(
+            base.yaw_enter_deg, spread.get("yaw", 0.0), 3.0, 1.6
+        )
+        pitch_down_enter = self._expanded_limit(
+            base.pitch_down_enter_deg, spread.get("pitch", 0.0), 3.0, 1.8
+        )
+        pitch_up_enter = self._expanded_limit(
+            base.pitch_up_enter_deg, spread.get("pitch", 0.0), 3.0, 1.8
+        )
+        roll_enter = self._expanded_limit(
+            base.roll_enter_deg, spread.get("roll", 0.0), 3.0, 1.5
+        )
+        gaze_x_enter = self._expanded_limit(
+            base.gaze_x_enter, spread.get("gaze_x", 0.0), 3.0, 1.5
+        )
+        gaze_y_enter = self._expanded_limit(
+            base.gaze_y_enter, spread.get("gaze_y", 0.0), 3.0, 1.5
+        )
+        scale_spread = spread.get("face_scale", 0.0) / max(
+            profile.face_scale_center, 1e-6
+        )
+        face_scale_limit = self._expanded_limit(
+            base.max_face_scale_delta, scale_spread, 3.0, 1.4
+        )
+
+        return replace(
+            base,
+            yaw_enter_deg=yaw_enter,
+            yaw_exit_deg=self._exit_limit(
+                base.yaw_exit_deg, yaw_enter, spread.get("yaw", 0.0)
+            ),
+            pitch_down_enter_deg=pitch_down_enter,
+            pitch_down_exit_deg=self._exit_limit(
+                base.pitch_down_exit_deg,
+                pitch_down_enter,
+                spread.get("pitch", 0.0),
+            ),
+            pitch_up_enter_deg=pitch_up_enter,
+            pitch_up_exit_deg=self._exit_limit(
+                base.pitch_up_exit_deg,
+                pitch_up_enter,
+                spread.get("pitch", 0.0),
+            ),
+            roll_enter_deg=roll_enter,
+            roll_exit_deg=self._exit_limit(
+                base.roll_exit_deg, roll_enter, spread.get("roll", 0.0)
+            ),
+            gaze_x_enter=gaze_x_enter,
+            gaze_x_exit=self._exit_limit(
+                base.gaze_x_exit, gaze_x_enter, spread.get("gaze_x", 0.0)
+            ),
+            gaze_y_enter=gaze_y_enter,
+            gaze_y_exit=self._exit_limit(
+                base.gaze_y_exit, gaze_y_enter, spread.get("gaze_y", 0.0)
+            ),
+            max_face_scale_delta=face_scale_limit,
+        )
+
+    @staticmethod
+    def _expanded_limit(
+        base: float,
+        spread: float,
+        spread_multiplier: float,
+        maximum_multiplier: float,
+    ) -> float:
+        learned = max(0.0, spread) * spread_multiplier
+        return max(base, min(base * maximum_multiplier, learned))
+
+    @staticmethod
+    def _exit_limit(base: float, enter: float, spread: float) -> float:
+        learned = max(0.0, spread) * 2.0
+        return min(enter * 0.85, max(base, learned))

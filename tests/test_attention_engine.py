@@ -6,6 +6,8 @@ from onf_v2.core.models import (
     CalibrationStatus,
     EffectiveState,
     FrameObservation,
+    ObservationState,
+    RelativeMetrics,
 )
 
 
@@ -154,6 +156,41 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
 
         self.assertIsNone(self.engine.profile_switch_candidate)
         self.assertIsNone(self.engine.profile_switch_started_at)
+
+    def test_calibrated_spread_expands_writing_tolerance_with_a_cap(self):
+        writing = profile(28.0, 0.78)
+        writing.feature_spread = {
+            "pitch": 8.0,
+            "gaze_y": 0.09,
+        }
+        self.engine.writing_calibration.profile = writing
+        self.engine.writing_calibration.status = CalibrationStatus.READY
+        self.engine.set_work_mode("screen_writing")
+
+        thresholds = self.engine._profile_thresholds("writing")
+        relative = RelativeMetrics(
+            timestamp=0.0,
+            yaw_delta_deg=0.0,
+            pitch_delta_deg=20.0,
+            roll_delta_deg=0.0,
+            gaze_x_delta=0.0,
+            gaze_y_delta=0.25,
+            left_eye_open_norm=1.0,
+            right_eye_open_norm=1.0,
+            face_scale_delta=0.0,
+            confidence=0.95,
+        )
+
+        self.assertEqual(
+            self.engine.policy.classify_metrics(relative),
+            ObservationState.HEAD_DOWN,
+        )
+        self.assertEqual(
+            self.engine.policy.classify_metrics(relative, thresholds),
+            ObservationState.NORMAL_VIEW,
+        )
+        self.assertLessEqual(thresholds.pitch_down_enter_deg, 16.0 * 1.8)
+        self.assertLessEqual(thresholds.gaze_y_enter, 0.22 * 1.5)
 
 
 if __name__ == "__main__":

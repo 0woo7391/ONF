@@ -165,6 +165,7 @@ class CalibrationProfile:
     face_center: Tuple[float, float]
     sample_count: int
     quality_score: float
+    feature_spread: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass

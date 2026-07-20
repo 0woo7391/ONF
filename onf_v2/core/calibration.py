@@ -26,6 +26,8 @@ class CalibrationManager:
     min_valid_ratio: float = 0.85
     max_yaw_stdev: float = 4.0
     max_pitch_stdev: float = 4.0
+    instruction: str = "화면 작업 영역을 자연스럽게 바라봐 주세요."
+    movement_failure_message: str = "작업 영역을 벗어난 움직임이 너무 많았습니다."
     status: CalibrationStatus = CalibrationStatus.IDLE
     started_at: Optional[float] = None
     samples: List[FrameObservation] = field(default_factory=list)
@@ -85,7 +87,7 @@ class CalibrationManager:
                 valid_samples=len(self.samples),
                 target_samples=target_samples,
                 message=(
-                    "좋습니다. 현재 위치에서 정면을 보고 자세를 유지하세요."
+                    self.instruction
                     if valid_sample
                     else guidance
                 ),
@@ -199,30 +201,54 @@ class CalibrationManager:
         pitch_values = [s.head_pitch_deg or 0.0 for s in self.samples]
         if len(yaw_values) >= 2:
             if statistics.pstdev(yaw_values) > self.max_yaw_stdev:
-                self.failure_reason = "기준 설정 중 머리 움직임이 너무 컸습니다."
+                self.failure_reason = self.movement_failure_message
                 return None
             if statistics.pstdev(pitch_values) > self.max_pitch_stdev:
-                self.failure_reason = "기준 설정 중 머리 움직임이 너무 컸습니다."
+                self.failure_reason = self.movement_failure_message
                 return None
 
+        roll_values = [s.head_roll_deg or 0.0 for s in self.samples]
+        gaze_x_values = [s.gaze_x or 0.0 for s in self.samples]
+        gaze_y_values = [s.gaze_y or 0.0 for s in self.samples]
+        face_scale_values = [s.face_scale or 0.0 for s in self.samples]
+        face_x_values = [s.face_center[0] for s in self.samples if s.face_center]
+        face_y_values = [s.face_center[1] for s in self.samples if s.face_center]
         quality = min(1.0, len(self.samples) / float(max(target_samples, 1)))
         return CalibrationProfile(
             yaw_center=statistics.median(yaw_values),
             pitch_center=statistics.median(pitch_values),
-            roll_center=statistics.median([s.head_roll_deg or 0.0 for s in self.samples]),
-            gaze_x_center=statistics.median([s.gaze_x or 0.0 for s in self.samples]),
-            gaze_y_center=statistics.median([s.gaze_y or 0.0 for s in self.samples]),
+            roll_center=statistics.median(roll_values),
+            gaze_x_center=statistics.median(gaze_x_values),
+            gaze_y_center=statistics.median(gaze_y_values),
             left_eye_open_baseline=statistics.median(
                 [s.left_eye_open_ratio or 0.0 for s in self.samples]
             ),
             right_eye_open_baseline=statistics.median(
                 [s.right_eye_open_ratio or 0.0 for s in self.samples]
             ),
-            face_scale_center=statistics.median([s.face_scale or 0.0 for s in self.samples]),
+            face_scale_center=statistics.median(face_scale_values),
             face_center=(
-                statistics.median([s.face_center[0] for s in self.samples if s.face_center]),
-                statistics.median([s.face_center[1] for s in self.samples if s.face_center]),
+                statistics.median(face_x_values),
+                statistics.median(face_y_values),
             ),
             sample_count=len(self.samples),
             quality_score=quality,
+            feature_spread={
+                "yaw": self._robust_spread(yaw_values),
+                "pitch": self._robust_spread(pitch_values),
+                "roll": self._robust_spread(roll_values),
+                "gaze_x": self._robust_spread(gaze_x_values),
+                "gaze_y": self._robust_spread(gaze_y_values),
+                "face_scale": self._robust_spread(face_scale_values),
+                "face_x": self._robust_spread(face_x_values),
+                "face_y": self._robust_spread(face_y_values),
+            },
         )
+
+    @staticmethod
+    def _robust_spread(values: List[float]) -> float:
+        if not values:
+            return 0.0
+        center = statistics.median(values)
+        mad = statistics.median([abs(value - center) for value in values])
+        return float(mad * 1.4826)
