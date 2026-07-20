@@ -161,10 +161,9 @@ ApplicationWindow {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "공부할 항목을 눌러 지금 할 일로 선택하세요."
+                        text: "선택한 항목이 지금 할 일로 표시됩니다."
                         color: Theme.muted
-                        font.pixelSize: 11
-                        wrapMode: Text.WordWrap
+                        font.pixelSize: 10
                     }
 
                     ListView {
@@ -344,29 +343,24 @@ ApplicationWindow {
 
                     Item { Layout.fillHeight: true }
 
+                    PomodoroRing {
+                        visible: window.pomodoroMode
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: window.width < 1120 ? 214 : 246
+                        Layout.preferredHeight: Layout.preferredWidth
+                        progress: 1 - window.pomodoroSeconds / Math.max(1, window.focusMinutes * 60)
+                        timeText: window.durationText(window.pomodoroSeconds, false)
+                        phaseText: "집중 " + (window.completedRounds + 1) + "회차"
+                        roundText: window.completedRounds + " / " + window.targetRounds + "회 완료"
+                    }
+
                     Column {
+                        visible: !window.pomodoroMode
                         Layout.alignment: Qt.AlignHCenter
                         spacing: 7
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: window.pomodoroMode ? "집중 " + (window.completedRounds + 1) + "회차" : window.sessionRunning ? "학습 중" : "준비"
-                            color: window.sessionRunning ? Theme.success : Theme.muted
-                            font.pixelSize: 13
-                            font.weight: Font.DemiBold
-                        }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: window.pomodoroMode ? window.durationText(window.pomodoroSeconds, false) : window.durationText(window.elapsedSeconds, true)
-                            color: Theme.text
-                            font.pixelSize: window.width < 1120 ? 58 : 70
-                            font.weight: Font.Bold
-                        }
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: window.pomodoroMode ? window.completedRounds + " / " + window.targetRounds + "회 완료" : "오늘 누적 " + window.durationText(window.elapsedSeconds, true)
-                            color: Theme.muted
-                            font.pixelSize: 12
-                        }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: window.sessionRunning ? "학습 중" : "준비"; color: window.sessionRunning ? Theme.success : Theme.muted; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: window.durationText(window.elapsedSeconds, true); color: Theme.text; font.pixelSize: window.width < 1120 ? 58 : 70; font.weight: Font.Bold }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "오늘 누적 " + window.durationText(window.elapsedSeconds, true); color: Theme.muted; font.pixelSize: 12 }
                     }
 
                     Item { Layout.fillHeight: true }
@@ -431,7 +425,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                Layout.preferredWidth: window.cameraVisible ? Math.max(250, window.width * 0.25) : 210
+                objectName: "cameraPanel"
+                Layout.preferredWidth: Math.max(250, window.width * 0.25)
                 Layout.fillHeight: true
                 radius: Theme.radius
                 color: Theme.surface
@@ -461,14 +456,14 @@ ApplicationWindow {
                     }
 
                     Rectangle {
-                        visible: window.cameraVisible
                         Layout.fillWidth: true
                         Layout.preferredHeight: width * 0.72
                         radius: Theme.radius
-                        color: "#0D1726"
+                        color: window.cameraVisible ? "#0D1726" : Theme.surfaceSoft
                         clip: true
-                        Text { anchors.centerIn: parent; text: "카메라 미리보기"; color: "#8190A5"; font.pixelSize: 13 }
+                        Text { anchors.centerIn: parent; text: window.cameraVisible ? "카메라 미리보기" : "화면 숨김\n분석 유지"; color: window.cameraVisible ? "#8190A5" : Theme.muted; font.pixelSize: 12; horizontalAlignment: Text.AlignHCenter; lineHeight: 1.35 }
                         Rectangle {
+                            visible: window.cameraVisible
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.verticalCenter: parent.verticalCenter
                             width: 28
@@ -476,21 +471,13 @@ ApplicationWindow {
                             color: "#8CA0B8"
                         }
                         Rectangle {
+                            visible: window.cameraVisible
                             anchors.horizontalCenter: parent.horizontalCenter
                             anchors.verticalCenter: parent.verticalCenter
                             width: 1
                             height: 28
                             color: "#8CA0B8"
                         }
-                    }
-
-                    Rectangle {
-                        visible: !window.cameraVisible
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 74
-                        radius: Theme.radius
-                        color: Theme.surfaceSoft
-                        Text { anchors.centerIn: parent; text: "화면만 숨겼습니다\n집중 분석은 계속됩니다."; color: Theme.muted; font.pixelSize: 11; horizontalAlignment: Text.AlignHCenter; lineHeight: 1.35 }
                     }
 
                     ColumnLayout {
@@ -515,16 +502,14 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.minimumHeight: 120
+                        Layout.minimumHeight: 178
                         radius: Theme.radius
                         color: Theme.surfaceSoft
-                        ColumnLayout {
+                        StudyTimeline {
                             anchors.fill: parent
-                            anchors.margins: 12
-                            spacing: 7
-                            Text { text: "최근 집중 흐름"; color: Theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
-                            FocusBars { Layout.fillWidth: true; Layout.fillHeight: true }
-                            Text { text: "빨강 낮음  ·  노랑 보통  ·  초록 높음  ·  회색 휴식"; color: Theme.muted; font.pixelSize: 9 }
+                            anchors.margins: 10
+                            currentHour: window.currentDateTime.getHours()
+                            currentMinute: window.currentDateTime.getMinutes()
                         }
                     }
                 }

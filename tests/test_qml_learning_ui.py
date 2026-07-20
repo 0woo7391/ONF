@@ -5,6 +5,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QUrl
+from PySide6.QtCore import QObject
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
@@ -33,6 +34,25 @@ class QmlLearningUiTests(unittest.TestCase):
         self.assertEqual(window.property("currentTask"), "영어 독해 지문 2개")
         self.assertTrue(window.property("pomodoroMode"))
         self.assertTrue(window.property("cameraVisible"))
+
+        timeline = window.findChild(QObject, "studyTimeline")
+        pomodoro_ring = window.findChild(QObject, "pomodoroRing")
+        camera_panel = window.findChild(QObject, "cameraPanel")
+        self.assertIsNotNone(timeline)
+        self.assertIsNotNone(pomodoro_ring)
+        self.assertIsNotNone(camera_panel)
+
+        timeline.setProperty("currentHour", 1)
+        self.assertEqual(timeline.property("visibleRange"), "22:00 — 04:59")
+
+        initial_camera_width = camera_panel.property("width")
+        window.setProperty("cameraVisible", False)
+        self.app.processEvents()
+        self.assertAlmostEqual(
+            camera_panel.property("width"),
+            initial_camera_width,
+            delta=1.0,
+        )
 
 
 if __name__ == "__main__":
