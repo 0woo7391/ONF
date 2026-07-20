@@ -21,6 +21,7 @@ ApplicationWindow {
     property bool sessionPaused: false
     property bool cameraVisible: true
     property int elapsedSeconds: 0
+    property int todayStudySeconds: 0
     property int pomodoroSeconds: focusMinutes * 60
     property int focusMinutes: 25
     property int breakMinutes: 5
@@ -43,6 +44,14 @@ ApplicationWindow {
         return twoDigits(minutes) + ":" + twoDigits(secs)
     }
 
+    function endStudySession() {
+        sessionRunning = false
+        sessionPaused = false
+        elapsedSeconds = 0
+        pomodoroSeconds = focusMinutes * 60
+        completedRounds = 0
+    }
+
     Timer {
         interval: 1000
         repeat: true
@@ -51,6 +60,7 @@ ApplicationWindow {
             window.currentDateTime = new Date()
             if (window.sessionRunning && !window.sessionPaused) {
                 window.elapsedSeconds += 1
+                window.todayStudySeconds += 1
                 if (window.pomodoroMode && window.pomodoroSeconds > 0)
                     window.pomodoroSeconds -= 1
             }
@@ -360,7 +370,7 @@ ApplicationWindow {
                         spacing: 7
                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: window.sessionRunning ? "학습 중" : "준비"; color: window.sessionRunning ? Theme.success : Theme.muted; font.pixelSize: 13; font.weight: Font.DemiBold }
                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: window.durationText(window.elapsedSeconds, true); color: Theme.text; font.pixelSize: window.width < 1120 ? 58 : 70; font.weight: Font.Bold }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "오늘 누적 " + window.durationText(window.elapsedSeconds, true); color: Theme.muted; font.pixelSize: 12 }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "오늘 누적 " + window.durationText(window.todayStudySeconds, true); color: Theme.muted; font.pixelSize: 12 }
                     }
 
                     Item { Layout.fillHeight: true }
@@ -395,8 +405,7 @@ ApplicationWindow {
                             tone: "danger"
                             enabled: window.sessionRunning
                             onClicked: {
-                                window.sessionRunning = false
-                                window.sessionPaused = false
+                                window.endStudySession()
                                 feedback.showMessage("학습 기록을 저장했습니다.")
                             }
                         }

@@ -4,8 +4,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QUrl
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QMetaObject, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication
 
@@ -53,6 +52,18 @@ class QmlLearningUiTests(unittest.TestCase):
             initial_camera_width,
             delta=1.0,
         )
+
+        window.setProperty("sessionRunning", True)
+        window.setProperty("elapsedSeconds", 125)
+        window.setProperty("todayStudySeconds", 925)
+        window.setProperty("pomodoroSeconds", 310)
+        window.setProperty("completedRounds", 2)
+        self.assertTrue(QMetaObject.invokeMethod(window, "endStudySession"))
+        self.assertFalse(window.property("sessionRunning"))
+        self.assertEqual(window.property("elapsedSeconds"), 0)
+        self.assertEqual(window.property("pomodoroSeconds"), 25 * 60)
+        self.assertEqual(window.property("completedRounds"), 0)
+        self.assertEqual(window.property("todayStudySeconds"), 925)
 
 
 if __name__ == "__main__":
