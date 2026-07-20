@@ -6,6 +6,8 @@ import ".."
 Item {
     id: root
     property var levels: [0,1,2,3,2,0,1, 1,2,4,3,2,1,0, 2,3,4,4,3,2,1, 0,1,3,4,2,1,0, 1,2,2]
+    property var summary: ({study:"46시간 20분",focus:"38시간 12분",ratio:82,days:19,longest:"8일"})
+    property string monthLabel: "7월"
 
     ColumnLayout {
         anchors.fill: parent
@@ -13,11 +15,11 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Column {
-                Text { text: "7월 학습 잔디"; color: Theme.text; font.pixelSize: 16; font.weight: Font.Bold }
-                Text { text: "19일 학습 · 46시간 20분"; color: Theme.muted; font.pixelSize: 11 }
+                Text { text: root.monthLabel + " 학습 잔디"; color: Theme.text; font.pixelSize: 16; font.weight: Font.Bold }
+                Text { text: root.summary.days + "일 학습 · " + root.summary.study; color: Theme.muted; font.pixelSize: 11 }
             }
             Item { Layout.fillWidth: true }
-            Text { text: "최장 연속 8일"; color: Theme.success; font.pixelSize: 12; font.weight: Font.DemiBold }
+            Text { text: "최장 연속 " + root.summary.longest; color: Theme.success; font.pixelSize: 12; font.weight: Font.DemiBold }
         }
         RowLayout {
             Layout.fillWidth: true
@@ -85,10 +87,10 @@ Item {
                 Text { text: "이번 달 한눈에"; color: Theme.text; font.pixelSize: 14; font.weight: Font.Bold }
                 Repeater {
                     model: [
-                        {label: "총 공부시간", value: "46시간 20분"},
-                        {label: "순공시간", value: "38시간 12분"},
-                        {label: "평균 집중률", value: "82%"},
-                        {label: "학습한 날", value: "19일"}
+                        {label: "총 공부시간", value: root.summary.study},
+                        {label: "순공시간", value: root.summary.focus},
+                        {label: "평균 집중률", value: root.summary.ratio + "%"},
+                        {label: "학습한 날", value: root.summary.days + "일"}
                     ]
                     delegate: RowLayout {
                         id: monthMetric

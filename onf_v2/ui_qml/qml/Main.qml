@@ -29,8 +29,12 @@ ApplicationWindow {
     property int targetRounds: 4
     property int completedRounds: 0
     property string currentTask: "영어 독해 지문 2개"
+    property string currentTaskSchedule: "시간 미지정"
+    property bool currentTaskAutoSelected: false
+    property int lastTaskCheckMinute: -1
     property date currentDateTime: new Date()
     property int currentTabIndex: 0
+    property var backendObject: null
 
     function twoDigits(value) {
         return value < 10 ? "0" + value : value
@@ -59,12 +63,69 @@ ApplicationWindow {
         sessionPaused = false
     }
 
+    function parseClock(value) {
+        if (!value || value.indexOf(":") < 0) return -1
+        var parts = value.split(":")
+        var hour = Number(parts[0])
+        var minute = Number(parts[1])
+        if (isNaN(hour) || isNaN(minute)) return -1
+        return hour * 60 + minute
+    }
+
+    function refreshScheduledTask() {
+        var wasAutoSelected = currentTaskAutoSelected
+        var nowMinute = currentDateTime.getHours() * 60 + currentDateTime.getMinutes()
+        var source = backendObject ? backendObject.plannerTasks : todayTasks
+        var bestTask = null
+        var bestStart = -1
+        var sourceCount = backendObject ? source.length : source.count
+        for (var i = 0; i < sourceCount; i++) {
+            var task = backendObject ? source[i] : source.get(i)
+            if (task.done || task.taskState === 1) continue
+            var start = parseClock(task.start)
+            if (start < 0) continue
+            var end = parseClock(task.end)
+            if (end < 0) {
+                var duration = Number(String(task.duration || "").replace(/[^0-9]/g, ""))
+                end = start + (isNaN(duration) || duration <= 0 ? 60 : duration)
+            }
+            var active = end >= start ? nowMinute >= start && nowMinute < end : nowMinute >= start || nowMinute < end
+            if (active && start >= bestStart) {
+                bestStart = start
+                bestTask = task
+            }
+        }
+        if (bestTask) {
+            currentTask = bestTask.title
+            currentTaskSchedule = bestTask.detail || (bestTask.start + " - " + bestTask.end)
+            currentTaskAutoSelected = true
+        } else {
+            currentTaskAutoSelected = false
+            if (wasAutoSelected) {
+                currentTask = "선택된 할 일이 없습니다"
+                currentTaskSchedule = "오늘 계획에서 선택하세요"
+            }
+        }
+    }
+
+    Connections {
+        target: window.backendObject
+        enabled: window.backendObject !== null
+        ignoreUnknownSignals: true
+        function onDataChanged() { window.refreshScheduledTask() }
+    }
+
     Timer {
         interval: 1000
         repeat: true
         running: true
         onTriggered: {
             window.currentDateTime = new Date()
+            var minute = window.currentDateTime.getMinutes()
+            if (minute !== window.lastTaskCheckMinute) {
+                window.lastTaskCheckMinute = minute
+                window.refreshScheduledTask()
+            }
             if (window.sessionRunning && !window.sessionPaused) {
                 window.elapsedSeconds += 1
                 window.todayStudySeconds += 1
@@ -76,10 +137,10 @@ ApplicationWindow {
 
     ListModel {
         id: todayTasks
-        ListElement { title: "영어 독해 지문 2개"; detail: "예상 45분"; done: false }
-        ListElement { title: "수학 오답노트 정리"; detail: "시간 미지정"; done: false }
-        ListElement { title: "한국사 4강 복습"; detail: "예상 30분"; done: true }
-        ListElement { title: "과학 개념 문제 20개"; detail: "오후 8시 예정"; done: false }
+        ListElement { taskId: -1; taskState: 0; title: "영어 독해 지문 2개"; start: "09:00"; end: "09:45"; duration: "45분"; detail: "09:00 - 09:45"; done: false }
+        ListElement { taskId: -2; taskState: 0; title: "수학 오답노트 정리"; start: ""; end: ""; duration: ""; detail: "시간 미지정"; done: false }
+        ListElement { taskId: -3; taskState: 1; title: "한국사 4강 복습"; start: ""; end: ""; duration: "30분"; detail: "예상 30분"; done: true }
+        ListElement { taskId: -4; taskState: 0; title: "과학 개념 문제 20개"; start: "20:00"; end: "21:00"; duration: "60분"; detail: "20:00 - 21:00"; done: false }
     }
 
     ColumnLayout {
@@ -175,7 +236,7 @@ ApplicationWindow {
                             Layout.preferredHeight: 28
                             radius: 14
                             color: Theme.primarySoft
-                            Text { id: taskCount; anchors.centerIn: parent; text: "3개 남음"; color: Theme.primary; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Text { id: taskCount; anchors.centerIn: parent; text: (window.backendObject ? window.backendObject.plannerTasks.length : 3) + "개 계획"; color: Theme.primary; font.pixelSize: 11; font.weight: Font.DemiBold }
                         }
                     }
 
@@ -192,13 +253,14 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         spacing: 7
                         clip: true
-                        model: todayTasks
+                        model: window.backendObject ? window.backendObject.plannerTasks : todayTasks
                         delegate: Rectangle {
                             id: taskDelegate
                             required property string title
                             required property string detail
                             required property bool done
                             required property int index
+                            required property int taskId
                             width: taskList.width
                             height: 68
                             radius: Theme.radius
@@ -218,7 +280,12 @@ ApplicationWindow {
                                     Layout.preferredWidth: 28
                                     Layout.preferredHeight: 28
                                     text: taskDelegate.done ? "✓" : ""
-                                    onClicked: todayTasks.setProperty(taskDelegate.index, "done", !taskDelegate.done)
+                                    onClicked: {
+                                        if (window.backendObject)
+                                            window.backendObject.cyclePlannerTask(taskDelegate.taskId)
+                                        else
+                                            todayTasks.setProperty(taskDelegate.index, "done", !taskDelegate.done)
+                                    }
                                     background: Rectangle {
                                         radius: 6
                                         color: taskDelegate.done ? Theme.success : Theme.surface
@@ -250,6 +317,8 @@ ApplicationWindow {
                                 onClicked: {
                                     if (!taskDelegate.done) {
                                         window.currentTask = taskDelegate.title
+                                        window.currentTaskSchedule = taskDelegate.detail
+                                        window.currentTaskAutoSelected = false
                                         feedback.showMessage("지금 할 일을 변경했습니다.")
                                     }
                                 }
@@ -278,17 +347,29 @@ ApplicationWindow {
                     anchors.margins: 22
                     spacing: 12
 
-                    ColumnLayout {
+                    Rectangle {
                         Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "지금 할 일"; color: Theme.muted; font.pixelSize: 12 }
-                        Text {
-                            Layout.fillWidth: true
-                            text: window.currentTask
-                            color: Theme.text
-                            font.pixelSize: 23
-                            font.weight: Font.Bold
-                            elide: Text.ElideRight
+                        Layout.preferredHeight: 78
+                        radius: Theme.radius
+                        color: Theme.primarySoft
+                        border.color: "#BFD5FF"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 14
+                            anchors.rightMargin: 14
+                            spacing: 11
+                            Rectangle { Layout.preferredWidth: 5; Layout.fillHeight: true; Layout.topMargin: 13; Layout.bottomMargin: 13; radius: 3; color: Theme.primary }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Row {
+                                    spacing: 7
+                                    Text { text: "지금 할 일"; color: Theme.primary; font.pixelSize: 11; font.weight: Font.Bold }
+                                    Text { text: window.currentTaskAutoSelected ? "현재 시각에 맞춰 자동 선택" : "직접 선택"; color: Theme.muted; font.pixelSize: 9 }
+                                }
+                                Text { Layout.fillWidth: true; text: window.currentTask; color: Theme.text; font.pixelSize: 24; font.weight: Font.Bold; elide: Text.ElideRight }
+                            }
+                            Text { text: window.currentTaskSchedule; color: Theme.primary; font.pixelSize: 11; font.weight: Font.DemiBold }
                         }
                     }
 
@@ -538,6 +619,7 @@ ApplicationWindow {
             visible: window.currentTabIndex === 1
             Layout.fillWidth: true
             Layout.fillHeight: true
+            backendObject: window.backendObject
             onFeedbackRequested: function(message) { feedback.showMessage(message) }
         }
 
@@ -545,6 +627,7 @@ ApplicationWindow {
             visible: window.currentTabIndex === 2
             Layout.fillWidth: true
             Layout.fillHeight: true
+            backendObject: window.backendObject
             onFeedbackRequested: function(message) { feedback.showMessage(message) }
         }
 
@@ -552,6 +635,7 @@ ApplicationWindow {
             visible: window.currentTabIndex === 3
             Layout.fillWidth: true
             Layout.fillHeight: true
+            backendObject: window.backendObject
             onFeedbackRequested: function(message) { feedback.showMessage(message) }
         }
     }
@@ -578,4 +662,6 @@ ApplicationWindow {
             feedbackTimer.restart()
         }
     }
+
+    onBackendObjectChanged: refreshScheduledTask()
 }
