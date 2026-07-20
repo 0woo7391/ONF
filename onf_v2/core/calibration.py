@@ -37,6 +37,7 @@ class CalibrationManager:
     samples_per_target: int = 12
     natural_samples: int = 24
     max_guided_seconds: float = 30.0
+    target_settle_seconds: float = 0.45
     status: CalibrationStatus = CalibrationStatus.IDLE
     started_at: Optional[float] = None
     samples: List[FrameObservation] = field(default_factory=list)
@@ -44,6 +45,7 @@ class CalibrationManager:
     failure_reason: str = ""
     invalid_reasons: Counter[str] = field(default_factory=Counter)
     target_index: int = 0
+    target_started_at: Optional[float] = None
     samples_by_target: Dict[str, List[FrameObservation]] = field(default_factory=dict)
 
     def start(self, timestamp: float) -> None:
@@ -54,6 +56,7 @@ class CalibrationManager:
         self.failure_reason = ""
         self.invalid_reasons.clear()
         self.target_index = 0
+        self.target_started_at = timestamp
         self.samples_by_target = {target: [] for target in self.guided_targets}
 
     def reset(self) -> None:
@@ -64,6 +67,7 @@ class CalibrationManager:
         self.failure_reason = ""
         self.invalid_reasons.clear()
         self.target_index = 0
+        self.target_started_at = None
         self.samples_by_target.clear()
 
     @property
@@ -148,6 +152,19 @@ class CalibrationManager:
     ) -> CalibrationProgress:
         target = self.current_target
         required = self._required_samples(target)
+        target_started_at = (
+            self.target_started_at
+            if self.target_started_at is not None
+            else observation.timestamp
+        )
+        target_elapsed = max(0.0, observation.timestamp - target_started_at)
+        if target_elapsed < self.target_settle_seconds:
+            return self._guided_progress(
+                message="표시가 이동했습니다. 새 위치를 자연스럽게 바라봐 주세요.",
+                target=target,
+                target_count=len(self.samples_by_target[target]),
+                required=required,
+            )
         valid_sample, guidance = self._sample_feedback(observation)
         if valid_sample:
             self.samples.append(observation)
@@ -160,6 +177,7 @@ class CalibrationManager:
         if target_count >= required:
             if self.target_index + 1 < len(self.guided_targets):
                 self.target_index += 1
+                self.target_started_at = observation.timestamp
                 target = self.current_target
                 required = self._required_samples(target)
                 target_count = len(self.samples_by_target[target])
@@ -316,7 +334,7 @@ class CalibrationManager:
             return False, "양쪽 눈을 확인하지 못했습니다. 머리카락이나 안경 반사를 줄이고 눈을 떠주세요."
         if observation.gaze_x is None or observation.gaze_y is None:
             return False, "시선을 확인하지 못했습니다. 양쪽 눈을 뜨고 평소 작업 위치를 바라봐 주세요."
-        return True, "좋습니다. 현재 위치에서 정면을 보고 자세를 유지하세요."
+        return True, "좋습니다. 안내된 위치를 자연스럽게 바라봐 주세요."
 
     def _build_profile(self, target_samples: int) -> Optional[CalibrationProfile]:
         if len(self.samples) < max(10, int(target_samples * self.min_valid_ratio)):
@@ -350,10 +368,6 @@ class CalibrationManager:
                         "표시된 영역을 잠시 바라본 뒤 다시 설정하세요."
                     )
                     return None
-            if statistics.pstdev(pitch_values) > self.max_pitch_stdev:
-                self.failure_reason = self.movement_failure_message
-                return None
-
         roll_values = [s.head_roll_deg or 0.0 for s in self.samples]
         gaze_x_values = [s.gaze_x or 0.0 for s in self.samples]
         gaze_y_values = [s.gaze_y or 0.0 for s in self.samples]

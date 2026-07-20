@@ -111,6 +111,7 @@ class CalibrationManagerTest(unittest.TestCase):
             samples_per_target=2,
             natural_samples=2,
             max_guided_seconds=10.0,
+            target_settle_seconds=0.0,
         )
         manager.start(0.0)
         values = {
@@ -143,6 +144,7 @@ class CalibrationManagerTest(unittest.TestCase):
         manager = CalibrationManager(
             guided_targets=("center", "left", "right", "up", "down"),
             samples_per_target=2,
+            target_settle_seconds=0.0,
         )
         manager.start(0.0)
 
@@ -159,6 +161,7 @@ class CalibrationManagerTest(unittest.TestCase):
             guided_targets=("center", "left", "right", "up", "down"),
             samples_per_target=2,
             max_guided_seconds=10.0,
+            target_settle_seconds=0.0,
         )
         manager.start(0.0)
         progress = None
@@ -170,6 +173,51 @@ class CalibrationManagerTest(unittest.TestCase):
 
         self.assertEqual(progress.status, CalibrationStatus.FAILED)
         self.assertIn("시선 방향 변화", progress.message)
+
+    def test_guided_calibration_waits_after_target_change(self):
+        manager = CalibrationManager(
+            guided_targets=("center", "left"),
+            samples_per_target=1,
+            target_settle_seconds=0.5,
+        )
+        manager.start(10.0)
+
+        waiting = manager.update(observation(10.2))
+        center_done = manager.update(observation(10.6))
+        moving = manager.update(observation(10.8, yaw=-5.0))
+
+        self.assertEqual(waiting.valid_samples, 0)
+        self.assertEqual(center_done.target_key, "left")
+        self.assertEqual(moving.target_key, "left")
+        self.assertEqual(moving.target_progress, 0.0)
+
+    def test_guided_calibration_accepts_intentional_vertical_range(self):
+        manager = CalibrationManager(
+            guided_targets=("center", "left", "right", "up", "down"),
+            samples_per_target=2,
+            max_pitch_stdev=4.0,
+            target_settle_seconds=0.0,
+        )
+        manager.start(0.0)
+        values = {
+            "center": (0.0, 0.50, 0.50),
+            "left": (0.0, 0.35, 0.50),
+            "right": (0.0, 0.65, 0.50),
+            "up": (-18.0, 0.50, 0.35),
+            "down": (18.0, 0.50, 0.65),
+        }
+        progress = None
+        timestamp = 0.0
+        for target in manager.guided_targets:
+            pitch, gaze_x, gaze_y = values[target]
+            for _ in range(2):
+                sample = observation(timestamp, pitch=pitch)
+                sample.gaze_x = gaze_x
+                sample.gaze_y = gaze_y
+                progress = manager.update(sample)
+                timestamp += 0.1
+
+        self.assertEqual(progress.status, CalibrationStatus.READY)
 
 
 if __name__ == "__main__":
