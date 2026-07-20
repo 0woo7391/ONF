@@ -133,6 +133,8 @@ class FaceAnalyzer:
             head_roll_deg=roll,
             left_gaze_x=left_gaze_x,
             right_gaze_x=right_gaze_x,
+            left_gaze_y=left_gaze_y,
+            right_gaze_y=right_gaze_y,
             gaze_x=gaze_x,
             gaze_y=gaze_y,
             left_eye_open_ratio=left_eye_open,

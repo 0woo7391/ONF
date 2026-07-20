@@ -144,6 +144,8 @@ class FrameObservation:
     head_roll_deg: Optional[float] = None
     left_gaze_x: Optional[float] = None
     right_gaze_x: Optional[float] = None
+    left_gaze_y: Optional[float] = None
+    right_gaze_y: Optional[float] = None
     gaze_x: Optional[float] = None
     gaze_y: Optional[float] = None
     left_eye_open_ratio: Optional[float] = None
