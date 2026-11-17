@@ -41,6 +41,20 @@ class DurationAccumulatorTimelineTests(unittest.TestCase):
         self.assertEqual(len(snapshot), 3)
         self.assertTrue(all(state == EffectiveState.FOCUS for _, state in snapshot))
 
+    def test_old_and_duplicate_timestamps_do_not_change_time_or_state(self):
+        metrics = DurationAccumulator()
+        metrics.update(EffectiveState.FOCUS, 0.0)
+        metrics.update(EffectiveState.NON_FOCUS, 10.0)
+        metrics.update(EffectiveState.BREAK, 8.0)
+        metrics.update(EffectiveState.BREAK, 10.0)
+        metrics.update(EffectiveState.UNSCORED, 11.0)
+
+        self.assertEqual(metrics.last_timestamp, 11.0)
+        self.assertEqual(metrics.durations[EffectiveState.FOCUS], 10.0)
+        self.assertEqual(metrics.durations[EffectiveState.NON_FOCUS], 1.0)
+        self.assertEqual(metrics.durations[EffectiveState.BREAK], 0.0)
+        self.assertEqual(sum(metrics.snapshot().values()), 11.0)
+
 
 if __name__ == "__main__":
     unittest.main()

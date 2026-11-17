@@ -10,3 +10,6 @@ logs/
 result/
 results/
 sessions/
+build/
+dist/
+.venv-build/

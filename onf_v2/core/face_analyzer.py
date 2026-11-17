@@ -6,6 +6,7 @@ from typing import Any, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
+from mediapipe.python.solutions import face_mesh
 
 from .models import FrameObservation, ObservationState
 
@@ -22,9 +23,7 @@ class FaceAnalyzer:
             "MPLCONFIGDIR",
             os.path.join(os.getcwd(), ".cache", "matplotlib"),
         )
-        import mediapipe as mp
-
-        self._mp_face = mp.solutions.face_mesh
+        self._mp_face = face_mesh
         self._face_mesh = self._mp_face.FaceMesh(
             static_image_mode=False,
             max_num_faces=max_num_faces,
@@ -78,35 +77,31 @@ class FaceAnalyzer:
         face_scale = max(bbox[2] - bbox[0], bbox[3] - bbox[1])
         face_center = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
         yaw, pitch, roll = self._head_pose(landmarks, w, h)
-        left_gaze_x, left_gaze_y = self._eye_gaze(
+        left_gaze_x, left_gaze_y, left_eye_open = self._eye_metrics(
             landmarks,
-            outer=33,
-            inner=133,
-            top=159,
-            bottom=145,
+            w,
+            h,
+            corner_a=33,
+            corner_b=133,
+            lid_pairs=((159, 145), (160, 144), (158, 153)),
             iris=468,
         )
-        right_gaze_x, right_gaze_y = self._eye_gaze(
+        right_gaze_x, right_gaze_y, right_eye_open = self._eye_metrics(
             landmarks,
-            outer=362,
-            inner=263,
-            top=386,
-            bottom=374,
+            w,
+            h,
+            corner_a=362,
+            corner_b=263,
+            lid_pairs=((386, 374), (385, 380), (387, 373)),
             iris=473,
         )
-        left_eye_open = self._eye_open_ratio(landmarks, outer=33, inner=133, top=159, bottom=145)
-        right_eye_open = self._eye_open_ratio(
-            landmarks, outer=362, inner=263, top=386, bottom=374
-        )
-
-        gaze_values_x = [
-            value for value in (left_gaze_x, right_gaze_x) if value is not None
-        ]
-        gaze_values_y = [
-            value for value in (left_gaze_y, right_gaze_y) if value is not None
-        ]
-        gaze_x = float(np.median(gaze_values_x)) if gaze_values_x else None
-        gaze_y = float(np.median(gaze_values_y)) if gaze_values_y else None
+        if all(value is not None for value in (
+            left_gaze_x, right_gaze_x, left_gaze_y, right_gaze_y
+        )):
+            gaze_x = (left_gaze_x + right_gaze_x) / 2.0
+            gaze_y = (left_gaze_y + right_gaze_y) / 2.0
+        else:
+            gaze_x = gaze_y = None
 
         confidence = self._estimate_confidence(
             face_scale=face_scale,
@@ -155,34 +150,54 @@ class FaceAnalyzer:
         return min(xs), min(ys), max(xs), max(ys)
 
     @staticmethod
-    def _eye_open_ratio(landmarks: Sequence, outer: int, inner: int, top: int, bottom: int) -> Optional[float]:
-        horizontal = math.dist(
-            (landmarks[outer].x, landmarks[outer].y),
-            (landmarks[inner].x, landmarks[inner].y),
-        )
-        vertical = math.dist(
-            (landmarks[top].x, landmarks[top].y),
-            (landmarks[bottom].x, landmarks[bottom].y),
-        )
-        if horizontal < 1e-6:
-            return None
-        return vertical / horizontal
+    def _eye_metrics(
+        landmarks: Sequence,
+        width: int,
+        height: int,
+        corner_a: int,
+        corner_b: int,
+        lid_pairs: Sequence[Tuple[int, int]],
+        iris: int,
+    ) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        def point(index: int) -> Optional[Tuple[float, float]]:
+            if index >= len(landmarks):
+                return None
+            x, y = landmarks[index].x * width, landmarks[index].y * height
+            return (x, y) if math.isfinite(x) and math.isfinite(y) else None
 
-    @staticmethod
-    def _eye_gaze(
-        landmarks: Sequence, outer: int, inner: int, top: int, bottom: int, iris: int
-    ) -> Tuple[Optional[float], Optional[float]]:
-        x0 = landmarks[outer].x
-        x1 = landmarks[inner].x
-        y0 = landmarks[top].y
-        y1 = landmarks[bottom].y
-        width = x1 - x0
-        height = y1 - y0
-        if abs(width) < 1e-6 or abs(height) < 1e-6:
-            return None, None
-        gaze_x = (landmarks[iris].x - x0) / width
-        gaze_y = (landmarks[iris].y - y0) / height
-        return float(max(0.0, min(1.0, gaze_x))), float(max(0.0, min(1.0, gaze_y)))
+        start, end = point(corner_a), point(corner_b)
+        if start is None or end is None:
+            return None, None, None
+        if start[0] > end[0]:
+            start, end = end, start
+        dx, dy = end[0] - start[0], end[1] - start[1]
+        eye_width = math.hypot(dx, dy)
+        if eye_width < 3.0 or dx < eye_width * 0.2:
+            return None, None, None
+        ux, uy = dx / eye_width, dy / eye_width
+        vx, vy = -uy, ux
+
+        gaps = []
+        for top_index, bottom_index in lid_pairs:
+            top, bottom = point(top_index), point(bottom_index)
+            if top is None or bottom is None:
+                return None, None, None
+            gap = (bottom[0] - top[0]) * vx + (bottom[1] - top[1]) * vy
+            if gap < 0 or gap > eye_width * 0.7:
+                return None, None, None
+            gaps.append(gap)
+        eye_open = sum(gaps) / len(gaps) / eye_width
+
+        iris_point = point(iris)
+        if iris_point is None:
+            return None, None, eye_open
+        cx, cy = (start[0] + end[0]) / 2.0, (start[1] + end[1]) / 2.0
+        ix, iy = iris_point[0] - cx, iris_point[1] - cy
+        return (
+            (ix * ux + iy * uy) / eye_width,
+            (ix * vx + iy * vy) / eye_width,
+            eye_open,
+        )
 
     @staticmethod
     def _head_pose(landmarks: Sequence, width: int, height: int) -> Tuple[Optional[float], Optional[float], Optional[float]]:
@@ -247,10 +262,45 @@ class FaceAnalyzer:
         rotation_mat, _jacobian = cv2.Rodrigues(rotation_vec)
         proj_mat = np.hstack((rotation_mat, np.zeros((3, 1))))
         _camera, _rot, _trans, _rx, _ry, _rz, euler = cv2.decomposeProjectionMatrix(proj_mat)
-        pitch = float(euler[0][0])
-        yaw = float(euler[1][0])
-        roll = float(euler[2][0])
+        pitch = FaceAnalyzer._fold_pose_angle(float(euler[0][0]))
+        yaw = FaceAnalyzer._landmark_yaw(
+            landmarks[indices["nose_tip"]],
+            landmarks[indices["left_eye_outer"]],
+            landmarks[indices["right_eye_outer"]],
+        )
+        roll = FaceAnalyzer._eye_line_roll(
+            landmarks[indices["left_eye_outer"]],
+            landmarks[indices["right_eye_outer"]],
+        )
         return yaw, pitch, roll
+
+    @staticmethod
+    def _fold_pose_angle(angle: float) -> float:
+        normalized = (angle + 180.0) % 360.0 - 180.0
+        if normalized > 90.0:
+            return 180.0 - normalized
+        if normalized < -90.0:
+            return -180.0 - normalized
+        return normalized
+
+    @staticmethod
+    def _eye_line_roll(left_eye: Any, right_eye: Any) -> float:
+        angle = math.degrees(
+            math.atan2(right_eye.y - left_eye.y, right_eye.x - left_eye.x)
+        )
+        if angle > 90.0:
+            angle -= 180.0
+        elif angle <= -90.0:
+            angle += 180.0
+        return float(angle)
+
+    @staticmethod
+    def _landmark_yaw(nose: Any, left_eye: Any, right_eye: Any) -> float:
+        eye_span = abs(right_eye.x - left_eye.x)
+        if eye_span < 1e-6:
+            return 0.0
+        eye_mid_x = (left_eye.x + right_eye.x) / 2.0
+        return float((nose.x - eye_mid_x) / eye_span * 90.0)
 
     @staticmethod
     def _estimate_confidence(

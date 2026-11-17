@@ -105,13 +105,16 @@ class SessionRecorder:
         value = decision.profile_distances.get(profile)
         return "" if value is None else round(value, 4)
 
-    def finish(self, summary: SessionSummary, timeline_buckets=None) -> Optional[Path]:
+    def finish(self, summary: SessionSummary, timeline_buckets=None, task_records=None) -> Optional[Path]:
         if self.session_dir is None:
             return None
         self._close_raw_file()
         summary_path = self.session_dir / "summary.json"
         with summary_path.open("w", encoding="utf-8") as f:
-            json.dump(asdict(summary), f, ensure_ascii=False, indent=2)
+            payload = asdict(summary)
+            if task_records is not None:
+                payload["task_records"] = task_records
+            json.dump(payload, f, ensure_ascii=False, indent=2)
         self._write_events(summary.events)
         self._write_result_image(summary)
         self.database.add_session(
@@ -119,6 +122,7 @@ class SessionRecorder:
             self.session_dir,
             task_id=self.task_id,
             timeline_buckets=timeline_buckets,
+            task_records=task_records,
         )
         return summary_path
 

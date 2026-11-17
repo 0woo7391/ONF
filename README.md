@@ -1,109 +1,101 @@
-# ONF V2
+# ONF
 
-ONF V2 estimates visual attention from a webcam. It does not measure cognitive
-focus directly. The default definition of focus is:
+Windows study records and visual-attention estimation with Python and
+PySide6 / Qt Quick (QML). General study is the base workflow; Pomodoro is an
+optional mode. ONF estimates visual attention, not cognitive concentration.
 
-> A valid face is tracked, eyes are open, and head direction plus gaze remain
-> inside the calibrated screen work area for the required duration.
+## Checkout Status
 
-The original prototype is preserved by the `v0.1-prototype` tag. V2 work lives
-on the `refactor/v2-attention-engine` branch.
-
-## What Changed
-
-- Replaced frame-majority timing with monotonic elapsed-time accumulation.
-- Added multi-frame calibration with sample quality checks.
-- Replaced nose-position yaw/pitch with `solvePnP` head-pose estimation.
-- Added both-eye horizontal and vertical gaze ratios.
-- Added eye-open ratios normalized by eye width.
-- Split raw observation states from final session states.
-- Added unscored time for camera/model/low-confidence cases.
-- Added session recording: raw decisions, events, summary JSON, and result PNG.
-- Replaced the two OpenCV windows with one PySide6 desktop window.
-- Added a Pomodoro mode with a circular countdown, automatic breaks, manual
-  next-focus confirmation, pause/resume, persisted timing settings, and
-  completed-cycle recording.
-- Added a persisted camera-preview toggle. Hiding the preview stops video
-  rendering while face and gaze analysis continue in the background.
-- Moved camera capture and MediaPipe analysis off the UI loop. Camera preview
-  is capped at 20 FPS, attention analysis at 15 FPS, and Windows now prefers
-  Media Foundation before falling back to DirectShow.
-- Added non-blocking camera switching and automatic reconnection for the
-  currently selected built-in, USB, or virtual camera.
-- Added an optional screen-and-writing work mode with separate calibration
-  profiles for the normal screen posture and the user's writing posture.
-
-## Install
-
-```bash
-python -m pip install -r requirements.txt
-```
+Reviewed against the **local working tree on 2026-11-16**, including uncommitted
+files. This does not certify GitHub main or the existing EXE.
+Current branch: `refactor/v2-attention-engine`.
+Prototype reference: `v0.1-prototype`.
 
 ## Run
 
-```bash
+Use Python 3.11 on Windows, from the repository root:
+
+```powershell
+python -m pip install -r requirements.txt
 python main.py
 ```
 
-Open the baseline menu and calibrate the screen posture first. When
-`Screen + writing` is selected in Settings, calibrate the writing posture as
-well. `Start session` becomes available after the required profiles are ready.
+Or double-click `start_onf.bat`. To check launcher dependencies without
+opening a camera: `.\start_onf.bat --check`.
 
-The Settings tab stores user preferences automatically in
-`%LOCALAPPDATA%\ONF\settings.json`. The defaults are a 60-second continuous
-attention-away alert, a 5-minute break countdown, and sound notifications at
-60% volume. Four built-in alert sounds can be selected and previewed, and the
-volume can be adjusted with a slider or a numeric input.
+`main.py` starts the QML app through `onf_v2/ui_qml/preview.py`.
+`legacy_main.py` retains the old QWidget UI for comparison.
+An existing `dist/ONF.exe` can be older than the source.
 
-Pomodoro defaults are 25 minutes of focus, a 5-minute short break, four
-cycles, and a 15-minute long break. Visual-attention tracking remains active
-during focus phases. Breaks, pauses, and next-cycle waiting time are excluded
-from the focus-rate calculation.
+## Workflow
 
-## Camera Selection On Windows
+1. Settings: choose camera, screen-only or screen-and-writing mode; Save the form.
+2. Measurement: collect the screen baseline with the full-screen guide.
+   Collect the separate writing baseline when required.
+3. Study: choose general study or configure Pomodoro, optionally select a task,
+   then start. Rest/resume and end operate on the same session.
+4. Planner: tasks, optional start/end/duration, completion/defer status,
+   pinned schedules, calendar events and representative D-day.
+5. Records: selected day/week/month, measured-time allocation and separate
+   manually entered study.
 
-Select the built-in webcam, a USB camera, or a virtual camera from the Settings
-tab. If the preview is black or the wrong camera opens, press `Refresh cameras`
-and try another camera index. For Camo, start Camo Studio and connect the iPad
-before selecting its camera index. If the selected camera disconnects during a
-session, ONF marks that interval as unscored and retries without ending the
-session.
+Planned times are not measured study. Scheduled tasks recommend; explicit user
+selection changes live attribution. Allocating measured time does not add to
+session totals. Separate manual study adds time without inventing focus data.
 
-## Verify Without A Camera
+Rest is excluded from study time. Ending retains the final session duration;
+starting a new session resets that session's clock.
 
-```bash
-python -m unittest discover -s tests
+## Measurement Limits
+
+- Both-eye horizontal/vertical features and normalized lid opening are used.
+- Current head features mix a landmark-ratio yaw proxy, PnP pitch and eye-line
+  roll. They are not three calibrated physical rotation angles.
+- Screen/writing profiles are independent and currently in memory only.
+  Recalibrate after restart or incompatible camera/context changes.
+- Green during baseline collection means stable usable sample collection,
+  not proof of looking at the target.
+- Optional gaze validation evaluates a separate screen-mapping candidate;
+  it does not replace the active attention policy.
+- Occlusion, reflections, small faces and extreme side placement can prevent
+  usable tracking. Calibration cannot recover invisible eye features.
+- Hiding the camera preview does not stop analysis.
+
+For Camo, connect the iPad in Camo Studio, then select its camera in Settings.
+ONF is not fixed to Camo; built-in, USB and other virtual cameras use the same
+selection workflow. Actual hardware compatibility still requires testing.
+
+## Data
+
+- Database: project-root `sessions/onf.sqlite3` in source mode.
+- Completed session: `sessions/<timestamp>/observations.csv`, `events.csv`,
+  `summary.json`, and `result.png`.
+- Preferences: `%LOCALAPPDATA%/ONF/settings.json`.
+- Foreground tracking aggregates Windows executable names and active-use time,
+  not keystrokes or browser history.
+- Do not publish personal records, settings, camera images or build output.
+  Back up the database before maintenance.
+
+## Checks and Build
+
+Start with tests affected by a change:
+
+```powershell
+python -m unittest tests.test_time_accumulator tests.test_metrics
+python -m unittest tests.test_screen_gaze
+python -m unittest tests.test_study_timing
 ```
 
-## Project Structure
+Fixtures do not certify real camera/audio, native mixed-DPI or packaged behavior.
+See [status and acceptance gates](docs/STATUS_AND_ROADMAP.md).
 
-```text
-onf_v2/
-  app/
-    camera_service.py
-    session_manager.py
-    session_recorder.py
-  core/
-    attention_engine.py
-    calibration.py
-    face_analyzer.py
-    focus_policy.py
-    metrics.py
-    models.py
-    quality_gate.py
-    temporal_filter.py
-  ui/
-    main_window.py
-tests/
-V2_IMPLEMENTATION.md
-```
+When separately requested, `build_onf.bat` stages a build, checks startup and
+replaces the fixed `dist/ONF.exe`. Build dependencies are in
+`requirements-build.txt`. No build was performed during this documentation pass.
 
-## Output
+## Documentation
 
-Each completed session writes files under `sessions/<timestamp>/`:
-
-- `observations.csv`
-- `events.csv`
-- `summary.json`
-- `result.png`
-- `sessions/onf.sqlite3` stores the session database used by the Records tab.
+- [Document index and precedence](docs/README.md)
+- [Architecture and ownership](docs/ARCHITECTURE.md)
+- [Status and remaining work](docs/STATUS_AND_ROADMAP.md)
+- [Graphify scope and findings](docs/GRAPHIFY_ANALYSIS.md)

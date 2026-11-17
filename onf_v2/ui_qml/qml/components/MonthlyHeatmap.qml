@@ -5,6 +5,7 @@ import ".."
 
 Item {
     id: root
+    objectName: "monthlyHeatmap"
     property var levels: [0,1,2,3,2,0,1, 1,2,4,3,2,1,0, 2,3,4,4,3,2,1, 0,1,3,4,2,1,0, 1,2,2]
     property var summary: ({study:"46시간 20분",focus:"38시간 12분",ratio:82,days:19,longest:"8일"})
     property string monthLabel: "7월"
@@ -62,6 +63,7 @@ Item {
                         model: root.leadingBlankCount + root.dayCount
                         delegate: Rectangle {
                             id: dayCell
+                            objectName: "monthlyDay" + (dayIndex + 1)
                             required property int index
                             property int dayIndex: index - root.leadingBlankCount
                             property bool isDay: dayIndex >= 0 && dayIndex < root.dayCount
@@ -86,14 +88,14 @@ Item {
             ColumnLayout {
                 Layout.preferredWidth: 260
                 Layout.fillHeight: true
-                spacing: 16
+                spacing: 8
 
                 Text { text: "이번 달 한눈에"; color: Theme.text; font.pixelSize: 14; font.weight: Font.Bold }
                 Repeater {
                     model: [
                         {label: "총 공부시간", value: root.summary.study},
-                        {label: "순공시간", value: root.summary.focus},
-                        {label: "평균 집중률", value: root.summary.ratio + "%"},
+                        {label: "순공시간", value: root.summary.hasMeasurement === false ? "미측정" : root.summary.focus},
+                        {label: "평균 집중률", value: root.summary.hasMeasurement === false ? "미측정" : root.summary.ratio + "%"},
                         {label: "학습한 날", value: root.summary.days + "일"}
                     ]
                     delegate: RowLayout {
@@ -108,12 +110,7 @@ Item {
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.border }
                 Text { text: "주차별 순공시간"; color: Theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
                 Repeater {
-                    model: [
-                        {label: "1주", value: 0.64, time: "7시간 10분"},
-                        {label: "2주", value: 0.82, time: "9시간 14분"},
-                        {label: "3주", value: 1.0, time: "11시간 18분"},
-                        {label: "4주", value: 0.71, time: "8시간 02분"}
-                    ]
+                    model: root.summary.weeks || []
                     delegate: ColumnLayout {
                         id: weeklyMetric
                         required property var modelData

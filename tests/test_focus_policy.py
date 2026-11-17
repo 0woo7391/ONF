@@ -61,6 +61,60 @@ class FocusPolicyTest(unittest.TestCase):
             ObservationState.GAZE_AWAY,
         )
 
+    def test_processing_error_interrupts_focus_without_delay(self):
+        policy = FocusPolicy()
+        policy.decide(ObservationState.NORMAL_VIEW, 0.0)
+
+        error = policy.decide(ObservationState.PROCESSING_ERROR, 0.2)
+        returning = policy.decide(ObservationState.NORMAL_VIEW, 0.3)
+        recovered = policy.decide(ObservationState.NORMAL_VIEW, 0.7)
+
+        self.assertEqual(error.effective_state, EffectiveState.UNSCORED)
+        self.assertEqual(returning.effective_state, EffectiveState.UNSCORED)
+        self.assertEqual(recovered.effective_state, EffectiveState.FOCUS)
+
+    def test_alternating_head_and_gaze_keep_away_start_time(self):
+        policy = FocusPolicy()
+        policy.decide(ObservationState.NORMAL_VIEW, 0.0)
+        states = (
+            ObservationState.GAZE_AWAY,
+            ObservationState.HEAD_SIDE,
+            ObservationState.GAZE_AWAY,
+            ObservationState.HEAD_SIDE,
+            ObservationState.GAZE_AWAY,
+        )
+        decisions = [
+            policy.decide(state, 0.2 * index)
+            for index, state in enumerate(states, start=1)
+        ]
+
+        self.assertTrue(all(d.effective_state == EffectiveState.FOCUS for d in decisions[:-1]))
+        self.assertEqual(decisions[-1].effective_state, EffectiveState.NON_FOCUS)
+
+    def test_eyes_closed_requires_its_own_duration_after_gaze_away(self):
+        policy = FocusPolicy()
+        policy.decide(ObservationState.NORMAL_VIEW, 0.0)
+        policy.decide(ObservationState.GAZE_AWAY, 0.2)
+
+        policy.decide(ObservationState.EYES_CLOSED, 0.8)
+        early = policy.decide(ObservationState.EYES_CLOSED, 1.5)
+        confirmed = policy.decide(ObservationState.EYES_CLOSED, 1.9)
+
+        self.assertEqual(early.effective_state, EffectiveState.FOCUS)
+        self.assertEqual(confirmed.effective_state, EffectiveState.NON_FOCUS)
+
+    def test_head_down_keeps_its_longer_entry_time_when_reason_changes(self):
+        policy = FocusPolicy()
+        policy.decide(ObservationState.NORMAL_VIEW, 0.0)
+        policy.decide(ObservationState.HEAD_DOWN, 0.2)
+        policy.decide(ObservationState.GAZE_AWAY, 0.8)
+
+        early = policy.decide(ObservationState.GAZE_AWAY, 1.0)
+        confirmed = policy.decide(ObservationState.GAZE_AWAY, 1.2)
+
+        self.assertEqual(early.effective_state, EffectiveState.FOCUS)
+        self.assertEqual(confirmed.effective_state, EffectiveState.NON_FOCUS)
+
 
 if __name__ == "__main__":
     unittest.main()

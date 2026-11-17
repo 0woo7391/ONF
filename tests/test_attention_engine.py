@@ -40,6 +40,10 @@ def observation(timestamp: float, pitch: float, gaze_y: float) -> FrameObservati
         head_yaw_deg=0.0,
         head_pitch_deg=pitch,
         head_roll_deg=0.0,
+        left_gaze_x=0.5,
+        right_gaze_x=0.5,
+        left_gaze_y=gaze_y,
+        right_gaze_y=gaze_y,
         gaze_x=0.5,
         gaze_y=gaze_y,
         left_eye_open_ratio=0.25,
@@ -52,6 +56,36 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
         self.engine = AttentionEngine()
         self.engine.calibration.profile = profile(0.0, 0.5)
         self.engine.calibration.status = CalibrationStatus.READY
+
+    def test_guided_screen_profile_requires_valid_dwell_at_every_target(self):
+        engine = AttentionEngine()
+        manager = engine.calibration
+        manager.require_display_ack = True
+        engine.start_calibration(100.0, "screen")
+        timestamp = 100.0
+        values = {
+            "center": (0.0, 0.0, 0.50, 0.50),
+            "up": (0.0, -5.0, 0.50, 0.40),
+            "down": (0.0, 5.0, 0.50, 0.60),
+            "left": (-5.0, 0.0, 0.40, 0.50),
+            "right": (5.0, 0.0, 0.60, 0.50),
+        }
+        for stage, target in enumerate(manager.guided_targets):
+            self.assertEqual(manager.current_target, target)
+            self.assertTrue(manager.confirm_target_displayed(timestamp, stage, target))
+            yaw, pitch, gaze_x, gaze_y = values[target]
+            for index in range(41):
+                sample = observation(timestamp + index * 0.1, pitch, gaze_y)
+                sample.head_yaw_deg = yaw
+                sample.gaze_x = sample.left_gaze_x = sample.right_gaze_x = gaze_x
+                progress = engine.update_calibration(sample)
+            self.assertAlmostEqual(manager.valid_seconds_by_target[target], 2.0)
+            timestamp += 5.1
+        self.assertEqual(progress.status, CalibrationStatus.READY)
+        self.assertTrue(engine.ready_for_session)
+        self.assertEqual(set(progress.profile.target_centers), set(manager.guided_targets))
+        self.assertAlmostEqual(progress.profile.gaze_x_center, 0.5)
+        self.assertAlmostEqual(progress.profile.gaze_y_center, 0.5)
 
     def test_screen_writing_mode_requires_both_profiles(self):
         self.engine.set_work_mode("screen_writing")
@@ -174,7 +208,7 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
             pitch_delta_deg=20.0,
             roll_delta_deg=0.0,
             gaze_x_delta=0.0,
-            gaze_y_delta=0.25,
+            gaze_y_delta=0.10,
             left_eye_open_norm=1.0,
             right_eye_open_norm=1.0,
             face_scale_delta=0.0,
@@ -190,7 +224,90 @@ class DualPostureAttentionEngineTests(unittest.TestCase):
             ObservationState.NORMAL_VIEW,
         )
         self.assertLessEqual(thresholds.pitch_down_enter_deg, 16.0 * 1.8)
-        self.assertLessEqual(thresholds.gaze_y_enter, 0.22 * 1.5)
+        self.assertLessEqual(thresholds.gaze_y_enter, 0.08 * 1.5)
+
+    def test_closed_lids_remain_detectable_without_iris(self):
+        closed = observation(0.0, 0.0, 0.5)
+        closed.left_eye_open_ratio = 0.02
+        closed.right_eye_open_ratio = 0.02
+        closed.left_gaze_x = closed.right_gaze_x = None
+        closed.left_gaze_y = closed.right_gaze_y = None
+        closed.gaze_x = closed.gaze_y = None
+
+        self.engine.decide(closed)
+        closed.timestamp = 1.1
+        decision = self.engine.decide(closed)
+        self.assertEqual(decision.raw_state, ObservationState.EYES_CLOSED)
+        self.assertEqual(decision.effective_state, EffectiveState.NON_FOCUS)
+
+        closed.left_eye_open_ratio = None
+        closed.timestamp = 1.2
+        decision = self.engine.decide(closed)
+        self.assertEqual(decision.effective_state, EffectiveState.UNSCORED)
+
+    def test_open_lids_without_iris_are_unscored(self):
+        missing = observation(0.0, 0.0, 0.5)
+        missing.left_gaze_x = missing.right_gaze_x = None
+        missing.left_gaze_y = missing.right_gaze_y = None
+        missing.gaze_x = missing.gaze_y = None
+        self.assertEqual(
+            self.engine.decide(missing).effective_state,
+            EffectiveState.UNSCORED,
+        )
+
+    def test_dual_profiles_do_not_treat_open_eyes_as_closed(self):
+        writing = profile(28.0, 0.78)
+        writing.left_eye_open_baseline = 0.4
+        writing.right_eye_open_baseline = 0.4
+        self.engine.writing_calibration.profile = writing
+        self.engine.writing_calibration.status = CalibrationStatus.READY
+        self.engine.set_work_mode("screen_writing")
+
+        current = observation(0.0, 0.0, 0.5)
+        current.left_eye_open_ratio = current.right_eye_open_ratio = 0.13
+        self.assertFalse(self.engine._eyes_closed(current))
+        self.assertNotEqual(
+            self.engine.decide(current).raw_state,
+            ObservationState.EYES_CLOSED,
+        )
+
+    def test_screen_thresholds_include_guided_monitor_edges(self):
+        screen = profile(0.0, 0.0)
+        screen.gaze_x_center = 0.0
+        screen.target_centers = {
+            "center": {"yaw": 0.0, "pitch": 0.0, "gaze_x": 0.0, "gaze_y": 0.0},
+            "left": {"yaw": -22.0, "pitch": 0.0, "gaze_x": -0.2, "gaze_y": 0.0},
+            "right": {"yaw": 24.0, "pitch": 0.0, "gaze_x": 0.2, "gaze_y": 0.0},
+            "up": {"yaw": 0.0, "pitch": -15.0, "gaze_x": 0.0, "gaze_y": -0.06},
+            "down": {"yaw": 0.0, "pitch": 19.0, "gaze_x": 0.0, "gaze_y": 0.06},
+        }
+        self.engine.calibration.profile = screen
+
+        thresholds = self.engine._profile_thresholds("screen")
+        self.engine.policy.stabilizer.current = ObservationState.HEAD_SIDE
+        relative = RelativeMetrics(
+            timestamp=1.0,
+            yaw_delta_deg=22.0,
+            pitch_delta_deg=0.0,
+            roll_delta_deg=0.0,
+            gaze_x_delta=0.20,
+            gaze_y_delta=0.06,
+            left_eye_open_norm=1.0,
+            right_eye_open_norm=1.0,
+            face_scale_delta=0.0,
+            confidence=0.95,
+        )
+
+        self.assertGreaterEqual(thresholds.yaw_enter_deg, 26.0)
+        self.assertEqual(thresholds.yaw_exit_deg, 24.0)
+        self.assertGreaterEqual(thresholds.gaze_x_enter, 0.24)
+        self.assertAlmostEqual(thresholds.gaze_x_exit, 0.20)
+        self.assertGreaterEqual(thresholds.gaze_y_enter, 0.08)
+        self.assertAlmostEqual(thresholds.gaze_y_exit, 0.06)
+        self.assertEqual(
+            self.engine.policy.classify_metrics(relative, thresholds),
+            ObservationState.NORMAL_VIEW,
+        )
 
 
 if __name__ == "__main__":

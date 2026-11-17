@@ -9,6 +9,7 @@ Item {
     id: root
     objectName: "settingsPage"
     property var backendObject: null
+    property var measurementObject: null
     readonly property var storedSettings: backendObject ? backendObject.settings : ({})
     property int focusDefaultValue: storedSettings.pomodoro_focus_minutes || 25
     property int shortBreakDefaultValue: storedSettings.pomodoro_short_break_minutes || 5
@@ -25,7 +26,7 @@ Item {
             backendObject.saveSettings({
                 camera_index: cameraCombo.currentIndex,
                 work_mode: workModeCombo.currentIndex === 1 ? "screen_writing" : "screen",
-                mode: ["weak", "normal", "strong"][sensitivityCombo.currentIndex],
+                mode: ["lenient", "normal", "strict"][sensitivityCombo.currentIndex],
                 sound_enabled: soundSwitch.checked,
                 attention_alert_seconds: alertDelay.value,
                 break_duration_minutes: breakDurationValue,
@@ -39,6 +40,11 @@ Item {
                 pomodoro_auto_start_break: autoStartBreakValue,
                 pomodoro_auto_start_next: autoStartNextValue
             })
+        }
+        if (measurementObject) {
+            measurementObject.reloadSettings()
+            if (cameraCombo.currentIndex !== measurementObject.cameraIndex)
+                measurementObject.selectCamera(cameraCombo.currentIndex)
         }
         feedbackRequested("설정을 저장했습니다.")
     }
@@ -84,8 +90,21 @@ Item {
                                 Text { text: "카메라"; color: Theme.muted; font.pixelSize: 10 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    ComboBox { id: cameraCombo; Layout.fillWidth: true; model: ["Camera 0", "Camera 1", "Camera 2", "Camera 3"]; currentIndex: root.storedSettings.camera_index || 0; implicitHeight: 40 }
-                                    ActionButton { text: "새로고침"; onClicked: root.feedbackRequested("카메라 목록을 새로고침했습니다.") }
+                                    ComboBox {
+                                        id: cameraCombo
+                                        Layout.fillWidth: true
+                                        model: root.measurementObject ? root.measurementObject.cameraOptions : ["Camera 0", "Camera 1", "Camera 2", "Camera 3"]
+                                        textRole: root.measurementObject ? "label" : ""
+                                        currentIndex: root.storedSettings.camera_index || 0
+                                        implicitHeight: 40
+                                    }
+                                    ActionButton {
+                                        text: "다시 연결"
+                                        onClicked: {
+                                            if (root.measurementObject) root.measurementObject.refreshCamera()
+                                            root.feedbackRequested("카메라 연결을 다시 시도합니다.")
+                                        }
+                                    }
                                 }
                             }
                             ColumnLayout {
@@ -96,13 +115,18 @@ Item {
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 Text { text: "판정 민감도"; color: Theme.muted; font.pixelSize: 10 }
-                                ComboBox { id: sensitivityCombo; Layout.fillWidth: true; model: ["관대함", "보통", "민감함"]; currentIndex: root.storedSettings.mode === "weak" ? 0 : root.storedSettings.mode === "strong" ? 2 : 1; implicitHeight: 40 }
+                                ComboBox { id: sensitivityCombo; Layout.fillWidth: true; model: ["관대함", "보통", "민감함"]; currentIndex: root.storedSettings.mode === "lenient" ? 0 : root.storedSettings.mode === "strict" ? 2 : 1; implicitHeight: 40 }
                             }
                         }
                         RowLayout {
                             Layout.fillWidth: true
-                            Rectangle { Layout.preferredWidth: 9; Layout.preferredHeight: 9; radius: 5; color: Theme.success }
-                            Text { text: "Camo Camera 연결됨"; color: Theme.text; font.pixelSize: 11; font.weight: Font.DemiBold }
+                            Rectangle { Layout.preferredWidth: 9; Layout.preferredHeight: 9; radius: 5; color: root.measurementObject && root.measurementObject.cameraConnected ? Theme.success : Theme.danger }
+                            Text {
+                                text: root.measurementObject ? root.measurementObject.cameraMessage : "카메라 상태 확인 중"
+                                color: Theme.text
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
                             Item { Layout.fillWidth: true }
                             Text { text: "카메라 화면 숨김 시에도 분석 유지"; color: Theme.muted; font.pixelSize: 10 }
                         }
@@ -169,7 +193,37 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Text { text: "볼륨"; color: Theme.muted; font.pixelSize: 10 }
-                            Slider { id: volumeSlider; Layout.fillWidth: true; from: 0; to: 100; value: root.storedSettings.alert_volume === undefined ? 65 : root.storedSettings.alert_volume }
+                            Slider {
+                                id: volumeSlider
+                                Layout.fillWidth: true
+                                from: 0
+                                to: 100
+                                value: root.storedSettings.alert_volume === undefined ? 65 : root.storedSettings.alert_volume
+                                background: Rectangle {
+                                    x: volumeSlider.leftPadding
+                                    y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                                    width: volumeSlider.availableWidth
+                                    height: 6
+                                    radius: 3
+                                    color: "#DDE2E8"
+                                    Rectangle {
+                                        width: volumeSlider.visualPosition * parent.width
+                                        height: parent.height
+                                        radius: 3
+                                        color: Theme.text
+                                    }
+                                }
+                                handle: Rectangle {
+                                    x: volumeSlider.leftPadding + volumeSlider.visualPosition * (volumeSlider.availableWidth - width)
+                                    y: volumeSlider.topPadding + volumeSlider.availableHeight / 2 - height / 2
+                                    width: 18
+                                    height: 18
+                                    radius: 9
+                                    color: Theme.surface
+                                    border.width: 3
+                                    border.color: Theme.text
+                                }
+                            }
                             TextField { Layout.preferredWidth: 58; text: Math.round(volumeSlider.value) + "%"; horizontalAlignment: Text.AlignHCenter; readOnly: true }
                             ActionButton {
                                 text: "테스트"

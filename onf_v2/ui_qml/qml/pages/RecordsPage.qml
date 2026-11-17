@@ -10,7 +10,7 @@ Item {
     objectName: "recordsPage"
     property var backendObject: null
     property int periodIndex: 1
-    readonly property var dailyData: backendObject ? backendObject.dailySummary : ({study:"4시간 32분",focus:"3시간 42분",away:"38분",break:"12분",unscored:"4분",ratio:82,longest:"54분"})
+    readonly property var dailyData: backendObject ? backendObject.dailySummary : ({study:"1시간 40분",focus:"1시간 22분",away:"18분",break:"0분",unscored:"0분",ratio:82,longest:"40분"})
     signal feedbackRequested(string message)
 
     function weeklyTotalMinutes() {
@@ -21,15 +21,15 @@ Item {
     }
 
     function weeklyFocusRatio() {
-        if (!backendObject) return 81
+        if (!backendObject) return "81%"
         var weighted = 0
         var total = 0
         for (var i = 0; i < backendObject.weeklyRecords.length; i++) {
             var item = backendObject.weeklyRecords[i]
-            weighted += Number(item.study) * Number(item.focus)
-            total += Number(item.study)
+            weighted += Number(item.focusSeconds)
+            total += Number(item.scoredSeconds)
         }
-        return total > 0 ? Math.round(weighted / total) : 0
+        return total > 0 ? Math.round(weighted / total * 100) + "%" : "미측정"
     }
 
     function minutesText(minutes) {
@@ -43,6 +43,14 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Text { text: "학습 기록"; color: Theme.text; font.pixelSize: 20; font.weight: Font.Bold }
+            Rectangle {
+                visible: root.backendObject && root.backendObject.recordsUseSampleData
+                Layout.preferredWidth: 62
+                Layout.preferredHeight: 24
+                radius: Theme.radiusSmall
+                color: Theme.primarySoft
+                Text { anchors.centerIn: parent; text: "예시 데이터"; color: Theme.primary; font.pixelSize: 9; font.weight: Font.DemiBold }
+            }
             Item { Layout.fillWidth: true }
             ActionButton { text: "‹"; onClicked: { if (root.backendObject) root.backendObject.shiftRecords(root.periodIndex, -1); root.feedbackRequested("이전 기간") } }
             Rectangle {
@@ -100,28 +108,64 @@ Item {
                         Text { text: "하루 한눈에"; color: Theme.text; font.pixelSize: 16; font.weight: Font.Bold }
                         Item {
                             Layout.alignment: Qt.AlignHCenter
-                            Layout.preferredWidth: 210
-                            Layout.preferredHeight: 210
+                            Layout.preferredWidth: 164
+                            Layout.preferredHeight: 164
                             Canvas {
                                 id: dailyDonut
                                 anchors.fill: parent
                                 onPaint: {
-                                    var ctx = getContext("2d"); ctx.reset(); var cx=width/2; var cy=height/2; var r=78
-                                    ctx.lineWidth=24; ctx.strokeStyle=Theme.border; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke()
-                                    ctx.strokeStyle=Theme.success; ctx.lineCap="round"; ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*root.dailyData.ratio/100); ctx.stroke()
+                                    var ctx = getContext("2d"); ctx.reset(); var cx=width/2; var cy=height/2; var r=59
+                                    ctx.lineWidth=19; ctx.strokeStyle=Theme.border; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke()
+                                    if (root.dailyData.hasMeasurement !== false) { ctx.strokeStyle=Theme.success; ctx.lineCap="round"; ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*root.dailyData.ratio/100); ctx.stroke() }
                                 }
                             }
-                            Column { anchors.centerIn: parent; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.dailyData.ratio + "%"; color: Theme.text; font.pixelSize: 38; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: "집중률"; color: Theme.muted; font.pixelSize: 11 } }
+                            Column { anchors.centerIn: parent; Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.dailyData.hasMeasurement === false ? "—" : root.dailyData.ratio + "%"; color: Theme.text; font.pixelSize: 32; font.weight: Font.Bold } Text { anchors.horizontalCenter: parent.horizontalCenter; text: root.dailyData.hasMeasurement === false ? "집중 미측정" : "측정 집중률"; color: Theme.muted; font.pixelSize: 11 } }
                         }
                         GridLayout {
                             Layout.fillWidth: true
                             columns: 2
                             Repeater {
-                                model: [{l:"공부시간",v:root.dailyData.study},{l:"순공시간",v:root.dailyData.focus},{l:"이탈시간",v:root.dailyData.away},{l:"최장 집중",v:root.dailyData.longest}]
+                                model: [{l:"공부시간",v:root.dailyData.study},{l:"순공시간",v:root.dailyData.hasMeasurement === false ? "미측정" : root.dailyData.focus},{l:"이탈시간",v:root.dailyData.hasMeasurement === false ? "미측정" : root.dailyData.away},{l:"최장 집중",v:root.dailyData.hasMeasurement === false ? "미측정" : root.dailyData.longest}].concat(root.dailyData.manual && root.dailyData.manual !== "0분" ? [{l:"직접 기록",v:root.dailyData.manual}] : [])
                                 delegate: Column { id: dailyMetric; required property var modelData; Layout.fillWidth: true; spacing: 2; Text{text:dailyMetric.modelData.l;color:Theme.muted;font.pixelSize:10} Text{text:dailyMetric.modelData.v;color:Theme.text;font.pixelSize:14;font.weight:Font.DemiBold} }
                             }
                         }
-                        Item { Layout.fillHeight: true }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 5
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text { text: "앱 사용시간"; color: Theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                Item { Layout.fillWidth: true }
+                                Text { text: "앞에 열린 앱"; color: Theme.muted; font.pixelSize: 9 }
+                            }
+                            Repeater {
+                                model: root.backendObject ? root.backendObject.dailyAppUsage.slice(0, 4) : []
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.processName
+                                        color: Theme.muted
+                                        font.pixelSize: 10
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        text: modelData.duration
+                                        color: Theme.text
+                                        font.pixelSize: 10
+                                        font.weight: Font.DemiBold
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: !root.backendObject || root.backendObject.dailyAppUsage.length === 0
+                                text: "표시할 앱 기록이 없습니다"
+                                color: Theme.muted
+                                font.pixelSize: 10
+                            }
+                        }
                     }
                 }
                 Rectangle {
@@ -143,6 +187,7 @@ Item {
                                 anchors.fill: parent
                                 anchors.margins: 14
                                 hourlyData: root.backendObject ? root.backendObject.dailyHourlyData : []
+                                studyDayStartHour: root.backendObject ? Number(root.backendObject.settings.study_day_start_hour || 0) : 0
                             }
                         }
                     }
@@ -185,12 +230,18 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: 14
                 anchors.rightMargin: 14
-                Text { text: root.periodIndex === 0 ? "선택한 날 · 순공 " + root.dailyData.focus : root.periodIndex === 1 ? "선택한 주 · 총 " + root.minutesText(root.weeklyTotalMinutes()) + " · 평균 집중률 " + root.weeklyFocusRatio() + "%" : "선택한 달 · " + (root.backendObject ? root.backendObject.monthlySummary.days : 19) + "일 학습"; color: Theme.muted; font.pixelSize: 11 }
+                Text { objectName: "recordsSummaryLabel"; text: root.periodIndex === 0 ? (root.dailyData.hasMeasurement === false ? "선택한 날 · 집중 미측정" : "선택한 날 · 순공 " + root.dailyData.focus) : root.periodIndex === 1 ? "선택한 주 · 총 " + root.minutesText(root.weeklyTotalMinutes()) + " · 평균 집중률 " + root.weeklyFocusRatio() : "선택한 달 · " + (root.backendObject ? root.backendObject.monthlySummary.days : 19) + "일 학습"; color: Theme.muted; font.pixelSize: 11 }
                 Item { Layout.fillWidth: true }
-                ActionButton { text: "세션 기록 보기"; onClicked: root.feedbackRequested("세션 기록") }
+                ActionButton { objectName: "openStudyRecordsButton"; text: "공부 기록"; onClicked: root.openStudyRecords() }
             }
         }
     }
 
     onDailyDataChanged: dailyDonut.requestPaint()
+    function openStudyRecords() { studyRecordDialog.newRecord(); studyRecordDialog.open() }
+    StudyRecordDialog {
+        id: studyRecordDialog
+        backendObject: root.backendObject
+        onFeedbackRequested: function(message) { root.feedbackRequested(message) }
+    }
 }

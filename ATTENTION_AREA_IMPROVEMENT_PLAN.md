@@ -1,5 +1,9 @@
 # ONF 작업 영역 기반 시각적 주의 판정 개선 계획
 
+> Documentation reconciliation (2026-11-16): Historical design background; old diagnoses and proposals are not current implementation status. [Documentation map](docs/README.md).
+
+> 2026-09-29: 포커스 판정·눈/자세 추적의 최신 검토와 실행 설계는 [FOCUS_TRACKING_REVIEWED_PLAN.md](FOCUS_TRACKING_REVIEWED_PLAN.md)를 우선한다. 아래는 이전 설계 배경이며, 일부 현재 구현 진단과 구현 후보는 이미 달라졌다. 일반 UI 내용은 참고 자료로 유지한다.
+
 ## 1. 목적
 
 ONF는 사용자의 인지적 집중이나 휴대폰 사용 여부를 직접 판별하지 않는다. 웹캠에서 얻은 얼굴, 머리 자세, 양쪽 눈의 방향을 이용해 사용자가 설정한 작업 영역을 보고 있는 시간을 추정한다.

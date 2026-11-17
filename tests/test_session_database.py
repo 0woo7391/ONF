@@ -32,17 +32,22 @@ class SessionDatabaseTest(unittest.TestCase):
                         max_deviation=24.0,
                     )
                 ],
+                app_usage_seconds={"Code.exe": 300.0, "chrome.exe": 120.0},
             )
 
             session_id = db.add_session(summary, Path(tmp) / "session")
 
             self.assertEqual(len(db.list_sessions()), 1)
             self.assertEqual(len(db.list_events(session_id)), 1)
+            usage = db.list_app_usage([session_id])
+            self.assertEqual(usage[0].process_name, "Code.exe")
+            self.assertEqual(usage[0].duration_seconds, 300.0)
 
             db.delete_session(session_id)
 
             self.assertEqual(db.list_sessions(), [])
             self.assertEqual(db.list_events(session_id), [])
+            self.assertEqual(db.list_app_usage([session_id]), [])
 
     def test_existing_database_is_migrated_for_pomodoro_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -237,6 +242,45 @@ class SessionDatabaseTest(unittest.TestCase):
             db.set_planner_task_status(task_id, "pending")
             self.assertEqual(db.list_planner_tasks()[0].status, "pending")
 
+    def test_fixed_schedule_repeats_daily_with_independent_completion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = SessionDatabase(Path(tmp) / "onf.sqlite3")
+            task_id = db.add_planner_task(
+                title="Lunch",
+                subject_id=None,
+                planned_date="2026-07-20",
+                deadline_date=None,
+                estimated_minutes=60,
+                task_type="study",
+                planned_start_minute=12 * 60,
+                planned_end_minute=13 * 60,
+            )
+
+            self.assertTrue(db.toggle_planner_task_fixed(task_id))
+            db.set_planner_task_completed(task_id, True)
+            db.ensure_fixed_schedule_occurrences("2026-07-21")
+
+            rows = {row.planned_date: row for row in db.list_planner_tasks()}
+            self.assertEqual(set(rows), {"2026-07-20", "2026-07-21"})
+            self.assertEqual(rows["2026-07-20"].status, "completed")
+            self.assertEqual(rows["2026-07-21"].status, "pending")
+            self.assertEqual(rows["2026-07-21"].planned_start_minute, 12 * 60)
+            self.assertEqual(rows["2026-07-21"].planned_end_minute, 13 * 60)
+            self.assertEqual(rows["2026-07-21"].estimated_minutes, 60)
+            self.assertEqual(
+                rows["2026-07-20"].fixed_schedule_id,
+                rows["2026-07-21"].fixed_schedule_id,
+            )
+
+            self.assertFalse(
+                db.toggle_planner_task_fixed(rows["2026-07-21"].id)
+            )
+            db.ensure_fixed_schedule_occurrences("2026-07-22")
+            self.assertNotIn(
+                "2026-07-22",
+                {row.planned_date for row in db.list_planner_tasks()},
+            )
+
     def test_session_keeps_minute_focus_buckets_for_daily_timeline(self):
         with tempfile.TemporaryDirectory() as tmp:
             db = SessionDatabase(Path(tmp) / "onf.sqlite3")
@@ -309,6 +353,24 @@ class SessionDatabaseTest(unittest.TestCase):
 
             self.assertEqual(len(db.list_sessions(2)), 2)
             self.assertEqual(len(db.list_sessions(None)), 3)
+
+    def test_calendar_events_keep_only_one_primary_dday(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = SessionDatabase(Path(tmp) / "onf.sqlite3")
+            first_id = db.add_calendar_event("중간고사", "2026-08-10")
+            second_id = db.add_calendar_event("모의고사", "2026-08-20")
+
+            db.set_primary_calendar_event(first_id)
+            events = db.list_calendar_events()
+            self.assertTrue(next(row for row in events if row.id == first_id).is_primary)
+
+            db.set_primary_calendar_event(second_id)
+            events = db.list_calendar_events()
+            self.assertFalse(next(row for row in events if row.id == first_id).is_primary)
+            self.assertTrue(next(row for row in events if row.id == second_id).is_primary)
+
+            db.delete_calendar_event(second_id)
+            self.assertEqual([row.id for row in db.list_calendar_events()], [first_id])
 
 
 if __name__ == "__main__":

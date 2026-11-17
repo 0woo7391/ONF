@@ -1,5 +1,7 @@
 # ONF V2 Implementation Notes
 
+> Documentation reconciliation (2026-11-16): Historical initial implementation snapshot; UI and head-pose descriptions below are not current instructions. [Documentation map](docs/README.md).
+
 ## Scope
 
 ONF V2 keeps the repository and prototype tag, but replaces the runtime with a

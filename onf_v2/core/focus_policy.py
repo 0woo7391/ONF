@@ -41,25 +41,26 @@ class StateStabilizer:
     current: ObservationState = ObservationState.NOT_CALIBRATED
     candidate: Optional[ObservationState] = None
     candidate_started_at: Optional[float] = None
+    candidate_required_seconds: float = 0.0
     current_started_at: Optional[float] = None
 
     def reset(self) -> None:
         self.current = ObservationState.NOT_CALIBRATED
         self.candidate = None
         self.candidate_started_at = None
+        self.candidate_required_seconds = 0.0
         self.current_started_at = None
 
     def update(self, raw: ObservationState, timestamp: float) -> ObservationState:
+        immediate_states = {
+            ObservationState.NOT_CALIBRATED,
+            ObservationState.CAMERA_ERROR,
+            ObservationState.PROCESSING_ERROR,
+            ObservationState.LOW_CONFIDENCE,
+            ObservationState.MULTIPLE_FACES,
+        }
         if self.current_started_at is None:
-            immediate_states = {
-                ObservationState.NORMAL_VIEW,
-                ObservationState.NOT_CALIBRATED,
-                ObservationState.CAMERA_ERROR,
-                ObservationState.PROCESSING_ERROR,
-                ObservationState.LOW_CONFIDENCE,
-                ObservationState.MULTIPLE_FACES,
-            }
-            if raw in immediate_states:
+            if raw == ObservationState.NORMAL_VIEW or raw in immediate_states:
                 self.current = raw
                 self.candidate = None
                 self.candidate_started_at = None
@@ -67,28 +68,58 @@ class StateStabilizer:
                 self.current = ObservationState.LOW_CONFIDENCE
                 self.candidate = raw
                 self.candidate_started_at = timestamp
+                self.candidate_required_seconds = self._required_duration(raw)
             self.current_started_at = timestamp
+            return self.current
+
+        if raw in immediate_states:
+            if raw != self.current:
+                self.current = raw
+                self.current_started_at = timestamp
+            self.candidate = None
+            self.candidate_started_at = None
+            self.candidate_required_seconds = 0.0
             return self.current
 
         if raw == self.current:
             self.candidate = None
             self.candidate_started_at = None
+            self.candidate_required_seconds = 0.0
             return self.current
 
-        if self.candidate != raw:
+        away_states = {
+            ObservationState.GAZE_AWAY,
+            ObservationState.HEAD_SIDE,
+            ObservationState.HEAD_DOWN,
+            ObservationState.HEAD_UP,
+        }
+        same_away_candidate = (
+            self.current not in away_states
+            and self.candidate in away_states
+            and raw in away_states
+        )
+        if self.candidate != raw and not same_away_candidate:
             self.candidate = raw
             self.candidate_started_at = timestamp
+            self.candidate_required_seconds = self._required_duration(raw)
             return self.current
+
+        if same_away_candidate:
+            self.candidate = raw
+            self.candidate_required_seconds = max(
+                self.candidate_required_seconds, self._required_duration(raw)
+            )
 
         candidate_started_at = (
             timestamp if self.candidate_started_at is None else self.candidate_started_at
         )
         elapsed = timestamp - candidate_started_at
-        if elapsed >= self._required_duration(raw):
+        if elapsed >= self.candidate_required_seconds:
             self.current = raw
             self.current_started_at = timestamp
             self.candidate = None
             self.candidate_started_at = None
+            self.candidate_required_seconds = 0.0
         return self.current
 
     def _required_duration(self, raw: ObservationState) -> float:

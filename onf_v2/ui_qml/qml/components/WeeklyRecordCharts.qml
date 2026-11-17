@@ -7,15 +7,7 @@ Item {
     id: root
     objectName: "weeklyRecordCharts"
     property var dayData: []
-    readonly property var demoData: [
-        {label:"7/20 월",study:190,focus:78,pure:70,away:18},
-        {label:"7/21 화",study:245,focus:84,pure:77,away:12},
-        {label:"7/22 수",study:150,focus:72,pure:65,away:24},
-        {label:"7/23 목",study:280,focus:88,pure:82,away:8},
-        {label:"7/24 금",study:225,focus:81,pure:74,away:16},
-        {label:"7/25 토",study:330,focus:91,pure:87,away:6},
-        {label:"7/26 일",study:175,focus:76,pure:69,away:20}
-    ]
+    readonly property var demoData: []
 
     function durationText(minutes) {
         var safe = Math.max(0, Math.round(minutes))
@@ -106,13 +98,17 @@ Item {
                             ctx.fillStyle = item.color
                             ctx.lineWidth = 2.2
                             ctx.beginPath()
+                            var drawing = false
                             for (var point = 0; point < data.length; point++) {
+                                if (data[point].hasMeasurement === false) { drawing = false; continue }
                                 var x = left + point * slot + slot / 2
                                 var y = top + plotHeight * (1 - Number(data[point][item.key]) / 100)
-                                if (point === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                                if (!drawing) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+                                drawing = true
                             }
                             ctx.stroke()
                             for (var dot = 0; dot < data.length; dot++) {
+                                if (data[dot].hasMeasurement === false) continue
                                 var dotX = left + dot * slot + slot / 2
                                 var dotY = top + plotHeight * (1 - Number(data[dot][item.key]) / 100)
                                 ctx.beginPath(); ctx.arc(dotX, dotY, 2.6, 0, Math.PI * 2); ctx.fill()
@@ -180,7 +176,7 @@ Item {
                             anchors.rightMargin: 9
                             Text { Layout.preferredWidth: 62; text: daySummary.modelData.label; color: Theme.text; font.pixelSize: 10; font.weight: Font.DemiBold }
                             Text { Layout.fillWidth: true; text: root.durationText(daySummary.modelData.study); color: Theme.text; font.pixelSize: 10; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 46; text: daySummary.modelData.focus + "%"; color: daySummary.modelData.focus >= 80 ? Theme.success : Theme.warning; font.pixelSize: 10; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 46; text: daySummary.modelData.hasMeasurement === false ? "—" : daySummary.modelData.focus + "%"; color: daySummary.modelData.hasMeasurement === false ? Theme.muted : daySummary.modelData.focus >= 80 ? Theme.success : Theme.warning; font.pixelSize: 10; font.weight: Font.DemiBold; horizontalAlignment: Text.AlignRight }
                         }
                     }
                 }
